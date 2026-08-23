@@ -1,4 +1,10 @@
 import type { SimSnapshot, SnapshotBody } from '@/sim/types';
+import {
+  DEFAULT_RELATIVE_SUN_DISPLAY_PX,
+  findScaleReferenceRadius,
+  relativeDisplayRadius,
+  R_SUN,
+} from '@/sim/visual/display-radius';
 import { Camera2D } from './camera2d';
 import { TrailBuffer } from './trails';
 
@@ -9,6 +15,8 @@ export interface RenderOptions {
   selectedId?: string | null;
   followId?: string | null;
   bodyScaleMode?: BodyScaleMode;
+  /** Screen radius (px) of the Sun / scale reference in relative mode. */
+  relativeSunDisplayPx?: number;
 }
 
 /**
@@ -21,6 +29,8 @@ export class CanvasRenderer {
   private ctx: CanvasRenderingContext2D;
   camera: Camera2D;
   trails = new TrailBuffer(300);
+  private scaleRefRadius = R_SUN;
+  private scaleRefDisplayPx = DEFAULT_RELATIVE_SUN_DISPLAY_PX;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -42,18 +52,27 @@ export class CanvasRenderer {
     this.camera.setSize(rect.width, rect.height);
   }
 
+  private applyScaleContext(
+    bodies: ReadonlyArray<SnapshotBody>,
+    relativeSunDisplayPx?: number,
+  ): void {
+    this.scaleRefRadius = findScaleReferenceRadius(bodies);
+    this.scaleRefDisplayPx = relativeSunDisplayPx ?? DEFAULT_RELATIVE_SUN_DISPLAY_PX;
+  }
+
   computeBodyRadius(body: SnapshotBody, mode: BodyScaleMode = 'relative'): number {
     if (mode === 'real') {
       const px = body.radius * this.camera.zoom * REAL_SCALE_MULTIPLIER;
       return Math.max(0.5, px);
     }
-    return body.visual.displayRadius;
+    return relativeDisplayRadius(body.radius, this.scaleRefRadius, this.scaleRefDisplayPx);
   }
 
   render(snapshot: SimSnapshot, options: RenderOptions = {}): void {
     const { width, height } = this.camera;
     const ctx = this.ctx;
     const bodyScaleMode = options.bodyScaleMode ?? 'relative';
+    this.applyScaleContext(snapshot.bodies, options.relativeSunDisplayPx);
 
     if (options.followId) {
       const body = snapshot.bodies.find((b) => b.id === options.followId);
@@ -91,7 +110,14 @@ export class CanvasRenderer {
     this.trails.clear();
   }
 
-  hitTest(snapshot: SimSnapshot, sx: number, sy: number, mode: BodyScaleMode = 'relative'): string | null {
+  hitTest(
+    snapshot: SimSnapshot,
+    sx: number,
+    sy: number,
+    mode: BodyScaleMode = 'relative',
+    relativeSunDisplayPx?: number,
+  ): string | null {
+    this.applyScaleContext(snapshot.bodies, relativeSunDisplayPx);
     for (let i = snapshot.bodies.length - 1; i >= 0; i--) {
       const body = snapshot.bodies[i]!;
       const screen = this.camera.worldToScreen(body.position.x, body.position.y);
@@ -156,7 +182,10 @@ export class CanvasRenderer {
     const ctx = this.ctx;
     const s = this.camera.worldToScreen(body.position.x, body.position.y);
     const r = this.computeBodyRadius(body, mode);
-    const isStar = body.mass >= 1e29 || body.name.toLowerCase().includes('sol') || body.name.toLowerCase().includes('sun');
+    const isStar =
+      body.mass >= 1e29 ||
+      body.name.toLowerCase().includes('sol') ||
+      body.name.toLowerCase().includes('sun');
 
     // Glow / Corona for stars
     if (isStar) {

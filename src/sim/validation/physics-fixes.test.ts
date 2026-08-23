@@ -80,7 +80,8 @@ describe('Critical Physics Fixes', () => {
     const mergedBodies = state.toBodies();
     expect(mergedBodies[0]!.name).toBe('Body 1+Body 2');
     expect(mergedBodies[0]!.radius).toBeCloseTo(Math.cbrt(2) * 6.371e6);
-    expect(mergedBodies[0]!.visual.displayRadius).toBeGreaterThan(originalDisplayRadius);
+    // Relative disks may share the readable floor; never shrink on merge.
+    expect(mergedBodies[0]!.visual.displayRadius).toBeGreaterThanOrEqual(originalDisplayRadius);
   });
 
   it('returns false from collision policy when no bodies collide', () => {

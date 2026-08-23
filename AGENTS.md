@@ -131,7 +131,10 @@ SimulationDocument → createSimulationRuntime(engineKind)
 - La escala visual, el radio de dibujo y la cámara no deben alterar las
   magnitudes físicas. En modo tamaño real el radio de dibujo es
   `radius * zoom` (sin multiplicador extra): inflarlo hace que las lunas
-  galileanas aparezcan dentro del disco de Júpiter.
+  galileanas aparezcan dentro del disco de Júpiter. En modo relativo el Sol
+  (o el cuerpo de mayor radio) es la referencia: los demás se dibujan como
+  `sunDisplayPx * (R / R_ref)` con un mínimo legible; `relativeSunDisplayPx`
+  es ajustable en la UI.
 - Las colisiones se implementan mediante `CollisionPolicy` (`merge` o
   `ignore`). No duplicar esa lógica en el renderer o en los componentes.
 - Evitar cambios silenciosos de escenarios/catalogo: añadir o modificar un

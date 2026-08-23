@@ -21,7 +21,7 @@ import {
   makeCustomBodyAtOrbit,
   makeSunBody,
 } from '../catalog/solar-system';
-import { displayRadiusFromPhysical } from '../visual/display-radius';
+import { displayRadiusFromPhysical, DEFAULT_RELATIVE_SUN_DISPLAY_PX } from '../visual/display-radius';
 import { SimulationEngine, runSteps } from '../engine/simulation-engine';
 import { createDocument } from '../document/simulation-document';
 import { scenarioToDocument, solarSystem, solarSystemFull, asteroidBeltScenario, kuiperBeltScenario } from '../scenarios';
@@ -224,14 +224,15 @@ describe('Solar system catalog', () => {
 });
 
 describe('Display radius', () => {
-  it('orders sizes Moon < Earth < Jupiter < Sun', () => {
+  it('keeps Sun largest and monotonic by physical radius', () => {
     const moon = displayRadiusFromPhysical(1.737e6);
     const earth = displayRadiusFromPhysical(6.371e6);
     const jupiter = displayRadiusFromPhysical(6.991e7);
     const sun = displayRadiusFromPhysical(6.96e8, true);
-    expect(moon).toBeLessThan(earth);
-    expect(earth).toBeLessThan(jupiter);
+    expect(moon).toBeLessThanOrEqual(earth);
+    expect(earth).toBeLessThanOrEqual(jupiter);
     expect(jupiter).toBeLessThan(sun);
+    expect(sun).toBe(DEFAULT_RELATIVE_SUN_DISPLAY_PX);
   });
 });
 

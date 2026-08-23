@@ -44,6 +44,8 @@ export function Toolbar() {
   const showDebug = useSimulationStore((s) => s.showDebug);
   const bodyScaleMode = useSimulationStore((s) => s.bodyScaleMode);
   const setBodyScaleMode = useSimulationStore((s) => s.setBodyScaleMode);
+  const relativeSunDisplayPx = useSimulationStore((s) => s.relativeSunDisplayPx);
+  const setRelativeSunDisplayPx = useSimulationStore((s) => s.setRelativeSunDisplayPx);
   const setCollisionMode = useSimulationStore((s) => s.setCollisionMode);
   const setEngineKind = useSimulationStore((s) => s.setEngineKind);
   const addBody = useSimulationStore((s) => s.addBody);
@@ -250,11 +252,25 @@ export function Toolbar() {
           title={
             bodyScaleMode === 'real'
               ? 'Tamaño real (escala física en metros, visible al hacer zoom). Clic para cambiar a relativo.'
-              : 'Tamaño relativo (escala logarítmica para visibilidad a distancia). Clic para cambiar a real.'
+              : 'Tamaño relativo (el Sol es la referencia; los demás = Sol × R/R☉). Clic para cambiar a real.'
           }
         >
           {bodyScaleMode === 'real' ? '🪐 Tamaño: Real' : '🔍 Tamaño: Relativo'}
         </button>
+        {bodyScaleMode === 'relative' && (
+          <label className="sun-scale-control" title="Tamaño visual del Sol; el resto se escala a partir de él">
+            <span>Sol {Math.round(relativeSunDisplayPx)}px</span>
+            <input
+              type="range"
+              min={12}
+              max={64}
+              step={1}
+              value={relativeSunDisplayPx}
+              onChange={(e) => setRelativeSunDisplayPx(Number(e.target.value))}
+              aria-label="Escala visual del Sol"
+            />
+          </label>
+        )}
         <button
           onClick={toggleDebug}
           className={showDebug ? 'active' : ''}
@@ -421,8 +437,11 @@ export function Toolbar() {
         {placementError && <p className="hint placement-error">{placementError}</p>}
         <p className="hint">
           {bodyScaleMode === 'relative'
-            ? '🔍 Tamaño relativo: escala logarítmica para visibilidad general de planetas y lunas.'
+            ? '🔍 Tamaño relativo: el Sol es el disco más grande; los demás se escalan con R/R☉ (mínimo legible). Ajusta el slider Sol.'
             : '🪐 Tamaño real: escala métrica física (haz zoom en planetas/lunas para apreciar sus diámetros).'}
+        </p>
+        <p className="hint">
+          Canvas: +/− zoom, ⊙ centrar, ○ seguir, ✕ eliminar el cuerpo seleccionado. Seleccionar un cuerpo inicia el seguimiento.
         </p>
       </div>
     </div>

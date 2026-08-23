@@ -862,7 +862,7 @@ Si en fase 2 se añade softening avanzado, los tests de validación siguen ejecu
 
 1. **Física en metros SI.** Siempre.
 2. **Cámara** transforma world (metros) → screen (px).
-3. **Radio visual** independiente del radio físico. Default (modo relativo): todos los cuerpos se ven ~6–12 px de radio. En modo tamaño real el disco es `radius * zoom` sin multiplicador extra, para no tragar lunas galileanas.
+3. **Radio visual** independiente del radio físico. Default (modo relativo): el Sol es el disco de referencia (`relativeSunDisplayPx`); los demás se dibujan como `sunPx × (R / R☉)` con mínimo legible. En modo tamaño real el disco es `radius * zoom` sin multiplicador extra, para no tragar lunas galileanas.
 4. **Trails** en coordenadas world, transformadas por cámara al dibujar.
 5. **Zoom logarítmico** recomendado para rangos Sol-Tierra (1.5e11 m) a Mercurio (5e10 m).
 
