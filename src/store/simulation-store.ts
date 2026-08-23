@@ -5,6 +5,7 @@ import { createDocument } from '@/sim/document/simulation-document';
 import { scenarioToDocument, solarSystem } from '@/sim/scenarios';
 import type { CelestialBody, EngineKind, SimSnapshot, ScenarioPreset, Vec2 } from '@/sim/types';
 import { CanvasRenderer, type BodyScaleMode } from '@/render/canvas-renderer';
+import { DEFAULT_RELATIVE_SUN_DISPLAY_PX } from '@/sim/visual/display-radius';
 import { makeBodyAtPosition } from '@/sim/orbit/compute-orbit';
 import { makeVisual, nextCatalogBodyId } from '@/sim/catalog/solar-system';
 import { resolvePhysicsDt } from '@/sim/config/physics-dt';
@@ -17,6 +18,8 @@ export interface SimulationStore {
   followId: string | null;
   showDebug: boolean;
   bodyScaleMode: BodyScaleMode;
+  /** Screen radius (px) of the Sun in relative scale mode. */
+  relativeSunDisplayPx: number;
   placementMode: boolean;
   placementError: string | null;
   currentScenarioId: string;
@@ -32,6 +35,7 @@ export interface SimulationStore {
   toggleDebug: () => void;
   setBodyScaleMode: (mode: BodyScaleMode) => void;
   toggleBodyScaleMode: () => void;
+  setRelativeSunDisplayPx: (px: number) => void;
   setPlacementMode: (enabled: boolean) => void;
   addBodyAtPosition: (position: Vec2) => boolean;
   updateBody: (body: CelestialBody) => void;
@@ -42,6 +46,7 @@ export interface SimulationStore {
   attachRenderer: (renderer: CanvasRenderer) => void;
   tick: (nowMs: number) => void;
   fitCamera: () => void;
+  zoomBy: (factor: number) => void;
 }
 
 function initEngine(scenario: ScenarioPreset = solarSystem): SimulationRuntime {
@@ -62,6 +67,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   followId: null,
   showDebug: false,
   bodyScaleMode: 'relative',
+  relativeSunDisplayPx: DEFAULT_RELATIVE_SUN_DISPLAY_PX,
   placementMode: false,
   placementError: null,
   currentScenarioId: solarSystem.id,
@@ -114,7 +120,11 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     set({ engine: next, snapshot: next.getSnapshot(), playing: false });
   },
 
-  setSelectedId: (id) => set({ selectedId: id }),
+  setSelectedId: (id) => {
+    // Selecting a body starts camera follow (auto-scroll); clearing selection keeps follow.
+    if (id) set({ selectedId: id, followId: id });
+    else set({ selectedId: null });
+  },
 
   setFollowId: (id) => set({ followId: id }),
 
@@ -124,6 +134,11 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
   toggleBodyScaleMode: () =>
     set((s) => ({ bodyScaleMode: s.bodyScaleMode === 'relative' ? 'real' : 'relative' })),
+
+  setRelativeSunDisplayPx: (px) => {
+    const clamped = Math.min(64, Math.max(12, px));
+    set({ relativeSunDisplayPx: clamped });
+  },
 
   setPlacementMode: (enabled) =>
     set({
@@ -208,14 +223,18 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   },
 
   removeBody: (id) => {
-    const { engine } = get();
+    const { engine, followId, selectedId } = get();
     if (!engine) return;
     const bodies = engine.getBodies().filter((b) => b.id !== id);
     const config = engine.getConfig();
     const safeDt = getSafePhysicsDt(bodies, config.physicsDt);
     const doc = createDocument('custom', bodies, { ...config, physicsDt: safeDt });
     engine.reset(doc);
-    set({ snapshot: engine.getSnapshot(), selectedId: null });
+    set({
+      snapshot: engine.getSnapshot(),
+      selectedId: selectedId === id ? null : selectedId,
+      followId: followId === id ? null : followId,
+    });
   },
 
   setCollisionMode: (mode) => {
@@ -227,11 +246,27 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   attachRenderer: (renderer) => set({ renderer }),
 
   tick: (nowMs) => {
-    const { engine, playing, renderer, snapshot, selectedId, followId, showDebug, bodyScaleMode } = get();
+    const {
+      engine,
+      playing,
+      renderer,
+      snapshot,
+      selectedId,
+      followId,
+      showDebug,
+      bodyScaleMode,
+      relativeSunDisplayPx,
+    } = get();
     if (!engine || !renderer) return;
 
     const next = playing ? engine.runFrame(nowMs) : snapshot ?? engine.getSnapshot();
-    renderer.render(next, { selectedId, followId, showDebug, bodyScaleMode });
+    renderer.render(next, {
+      selectedId,
+      followId,
+      showDebug,
+      bodyScaleMode,
+      relativeSunDisplayPx,
+    });
     set({ snapshot: next });
   },
 
@@ -239,5 +274,12 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     const { renderer, snapshot } = get();
     if (!renderer || !snapshot) return;
     renderer.camera.fitBodies(snapshot.bodies.map((b) => b.position));
+  },
+
+  zoomBy: (factor) => {
+    const { renderer } = get();
+    if (!renderer) return;
+    const { width, height } = renderer.camera;
+    renderer.camera.zoomAt(factor, width / 2, height / 2);
   },
 }));

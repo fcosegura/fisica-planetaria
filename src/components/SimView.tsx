@@ -209,6 +209,90 @@ export function BodyEditor() {
   );
 }
 
+function CanvasOverlayControls() {
+  const selectedId = useSimulationStore((s) => s.selectedId);
+  const followId = useSimulationStore((s) => s.followId);
+  const setFollowId = useSimulationStore((s) => s.setFollowId);
+  const removeBody = useSimulationStore((s) => s.removeBody);
+  const fitCamera = useSimulationStore((s) => s.fitCamera);
+  const zoomBy = useSimulationStore((s) => s.zoomBy);
+  const bodyScaleMode = useSimulationStore((s) => s.bodyScaleMode);
+  const relativeSunDisplayPx = useSimulationStore((s) => s.relativeSunDisplayPx);
+  const setRelativeSunDisplayPx = useSimulationStore((s) => s.setRelativeSunDisplayPx);
+  const snapshot = useSimulationStore((s) => s.snapshot);
+
+  const selectedName = snapshot?.bodies.find((b) => b.id === selectedId)?.name;
+  const isFollowingSelected = Boolean(selectedId && followId === selectedId);
+
+  return (
+    <div className="canvas-overlay" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="canvas-controls" role="toolbar" aria-label="Controles de cámara">
+        <button type="button" onClick={() => zoomBy(1.1)} aria-label="Acercar zoom" title="Acercar">
+          +
+        </button>
+        <button type="button" onClick={() => zoomBy(0.9)} aria-label="Alejar zoom" title="Alejar">
+          −
+        </button>
+        <button type="button" onClick={fitCamera} aria-label="Centrar vista" title="Centrar">
+          ⊙
+        </button>
+        <button
+          type="button"
+          className={isFollowingSelected ? 'active' : ''}
+          disabled={!selectedId}
+          onClick={() => {
+            if (!selectedId) return;
+            setFollowId(isFollowingSelected ? null : selectedId);
+          }}
+          aria-label={isFollowingSelected ? 'Dejar de seguir cuerpo' : 'Seguir cuerpo seleccionado'}
+          title={
+            selectedId
+              ? isFollowingSelected
+                ? `Dejar de seguir ${selectedName ?? 'cuerpo'}`
+                : `Seguir ${selectedName ?? 'cuerpo'}`
+              : 'Selecciona un cuerpo para seguirlo'
+          }
+        >
+          {isFollowingSelected ? '◎' : '○'}
+        </button>
+        <button
+          type="button"
+          className="danger"
+          disabled={!selectedId}
+          onClick={() => {
+            if (selectedId) removeBody(selectedId);
+          }}
+          aria-label="Eliminar cuerpo seleccionado"
+          title={selectedId ? `Eliminar ${selectedName ?? 'cuerpo'}` : 'Selecciona un cuerpo para eliminarlo'}
+        >
+          ✕
+        </button>
+      </div>
+
+      {bodyScaleMode === 'relative' && (
+        <label className="canvas-scale-slider">
+          <span>Escala Sol ({Math.round(relativeSunDisplayPx)} px)</span>
+          <input
+            type="range"
+            min={12}
+            max={64}
+            step={1}
+            value={relativeSunDisplayPx}
+            onChange={(e) => setRelativeSunDisplayPx(Number(e.target.value))}
+            aria-label="Tamaño visual del Sol; los demás cuerpos se escalan a partir de él"
+          />
+        </label>
+      )}
+
+      {followId && (
+        <p className="canvas-follow-hint">
+          Siguiendo: {snapshot?.bodies.find((b) => b.id === followId)?.name ?? '…'}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function SimCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const attachRenderer = useSimulationStore((s) => s.attachRenderer);
@@ -274,7 +358,14 @@ export function SimCanvas() {
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const store = useSimulationStore.getState();
-    const hit = store.renderer?.hitTest(store.snapshot!, sx, sy, store.bodyScaleMode) ?? null;
+    const hit =
+      store.renderer?.hitTest(
+        store.snapshot!,
+        sx,
+        sy,
+        store.bodyScaleMode,
+        store.relativeSunDisplayPx,
+      ) ?? null;
     if (hit) {
       setSelectedId(hit);
       dragRef.current = { x: sx, y: sy, startX: sx, startY: sy, panning: false, hitId: hit };
@@ -314,15 +405,18 @@ export function SimCanvas() {
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      role="img"
-      aria-label="Lienzo de simulación física orbital N-cuerpos"
-      className={`sim-canvas${placementMode ? ' placement-mode' : ''}`}
-      onWheel={onWheel}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-    />
+    <div className="sim-stage">
+      <canvas
+        ref={canvasRef}
+        role="img"
+        aria-label="Lienzo de simulación física orbital N-cuerpos"
+        className={`sim-canvas${placementMode ? ' placement-mode' : ''}`}
+        onWheel={onWheel}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+      />
+      <CanvasOverlayControls />
+    </div>
   );
 }
