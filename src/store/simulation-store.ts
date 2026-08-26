@@ -48,7 +48,10 @@ export interface SimulationStore {
   setCollisionMode: (mode: 'merge' | 'ignore') => void;
   attachRenderer: (renderer: CanvasRenderer) => void;
   tick: (nowMs: number) => void;
+  /** Fit all bodies in view (Centrar). */
   fitCamera: () => void;
+  /** Default framing: fit in relative mode, centre reference at zoom=1 in real mode. */
+  resetCameraView: () => void;
   zoomBy: (factor: number) => void;
 }
 
@@ -95,7 +98,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       placementError: null,
       currentScenarioId: scenario.id,
     });
-    get().fitCamera();
+    get().resetCameraView();
   },
 
   setPlaying: (playing) => set({ playing }),
@@ -135,10 +138,8 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   toggleDebug: () => set((s) => ({ showDebug: !s.showDebug })),
 
   setBodyScaleMode: (mode) => {
-    const renderer = get().renderer;
-    if (renderer) renderer.camera.zoom = 1;
     set({ bodyScaleMode: mode });
-    get().fitCamera();
+    get().resetCameraView();
   },
 
   toggleBodyScaleMode: () => {
@@ -296,6 +297,17 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       realSunDisplayPx,
       relativeSunDisplayPx,
     });
+  },
+
+  resetCameraView: () => {
+    const { renderer, snapshot, bodyScaleMode, realSunDisplayPx, relativeSunDisplayPx } = get();
+    if (!renderer || !snapshot) return;
+    const opts = { mode: bodyScaleMode, realSunDisplayPx, relativeSunDisplayPx };
+    if (bodyScaleMode === 'real') {
+      renderer.centerOnReference(snapshot.bodies, opts);
+    } else {
+      renderer.fitBodies(snapshot.bodies, opts);
+    }
   },
 
   zoomBy: (factor) => {

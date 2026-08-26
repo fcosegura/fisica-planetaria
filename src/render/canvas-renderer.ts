@@ -103,9 +103,8 @@ export class CanvasRenderer {
     });
 
     // Relative mode uses ~1e-9 px/m in camera.zoom; real mode uses zoom as a
-    // navigation multiplier on top of physicalPxPerMeter. A stale tiny zoom
-    // collapses every orbit onto the origin.
-    if (bodyScaleMode === 'real' && this.physicalPxPerMeter > 0 && this.camera.zoom < 1e-6) {
+    // navigation multiplier on top of physicalPxPerMeter.
+    if (bodyScaleMode === 'real' && this.physicalPxPerMeter > 0 && this.camera.zoom < 1e-12) {
       this.camera.zoom = 1;
     }
 
@@ -208,6 +207,30 @@ export class CanvasRenderer {
     }
 
     this.camera.center = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  }
+
+  /** Real-mode default view: honour the Sun slider at zoom = 1 (no auto-fit). */
+  centerOnReference(
+    bodies: ReadonlyArray<SnapshotBody>,
+    options: {
+      mode: BodyScaleMode;
+      realSunDisplayPx?: number;
+      relativeSunDisplayPx?: number;
+    },
+  ): void {
+    if (bodies.length === 0) return;
+    this.applyScaleContext(bodies, options);
+
+    const sun = bodies.find((b) => {
+      const n = b.name.toLowerCase();
+      return n === 'sol' || n === 'sun';
+    });
+    const ref = sun ?? bodies.reduce((largest, body) =>
+      body.radius > largest.radius ? body : largest,
+    bodies[0]!);
+
+    this.camera.center = { x: ref.position.x, y: ref.position.y };
+    this.camera.zoom = 1;
   }
 
   panScreen(dx: number, dy: number): void {

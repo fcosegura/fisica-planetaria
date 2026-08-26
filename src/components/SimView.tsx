@@ -3,8 +3,9 @@ import { useSimulationStore } from '@/store/simulation-store';
 import { CanvasRenderer } from '@/render/canvas-renderer';
 import {
   displayRadiusFromPhysical,
-  MAX_REAL_SUN_DISPLAY_PX,
-  MIN_REAL_SUN_DISPLAY_PX,
+  formatRealSunDisplayPx,
+  REAL_SUN_SLIDER_LOG_MAX,
+  REAL_SUN_SLIDER_LOG_MIN,
 } from '@/sim/visual/display-radius';
 import type { CelestialBody } from '@/sim/types';
 
@@ -297,14 +298,14 @@ function CanvasOverlayControls() {
 
       {bodyScaleMode === 'real' && (
         <label className="canvas-scale-slider">
-          <span>Sol real ({Math.round(realSunDisplayPx)} px)</span>
+          <span>Sol real ({formatRealSunDisplayPx(realSunDisplayPx)} px)</span>
           <input
             type="range"
-            min={MIN_REAL_SUN_DISPLAY_PX}
-            max={MAX_REAL_SUN_DISPLAY_PX}
-            step={1}
-            value={realSunDisplayPx}
-            onChange={(e) => setRealSunDisplayPx(Number(e.target.value))}
+            min={REAL_SUN_SLIDER_LOG_MIN}
+            max={REAL_SUN_SLIDER_LOG_MAX}
+            step={0.05}
+            value={Math.log10(realSunDisplayPx)}
+            onChange={(e) => setRealSunDisplayPx(10 ** Number(e.target.value))}
             aria-label="Tamaño del Sol en escala física; baja para ver más sistema, sube para detalle"
           />
           <small>Baja el Sol para ver más sistema; súbelo para planetas y lunas a detalle</small>
@@ -325,7 +326,7 @@ export function SimCanvas() {
   const attachRenderer = useSimulationStore((s) => s.attachRenderer);
   const tick = useSimulationStore((s) => s.tick);
   const setSelectedId = useSimulationStore((s) => s.setSelectedId);
-  const fitCamera = useSimulationStore((s) => s.fitCamera);
+  const resetCameraView = useSimulationStore((s) => s.resetCameraView);
   const snapshot = useSimulationStore((s) => s.snapshot);
   const placementMode = useSimulationStore((s) => s.placementMode);
   const addBodyAtPosition = useSimulationStore((s) => s.addBodyAtPosition);
@@ -347,11 +348,7 @@ export function SimCanvas() {
     attachRenderer(renderer);
     const store = useSimulationStore.getState();
     if (snapshot) {
-      renderer.fitBodies(snapshot.bodies, {
-        mode: store.bodyScaleMode,
-        realSunDisplayPx: store.realSunDisplayPx,
-        relativeSunDisplayPx: store.relativeSunDisplayPx,
-      });
+      store.resetCameraView();
       renderer.render(snapshot, {
         bodyScaleMode: store.bodyScaleMode,
         relativeSunDisplayPx: store.relativeSunDisplayPx,
@@ -376,7 +373,7 @@ export function SimCanvas() {
   }, [attachRenderer, tick]);
 
   useEffect(() => {
-    fitCamera();
+    resetCameraView();
   }, []);
 
   const onWheel = (e: React.WheelEvent) => {

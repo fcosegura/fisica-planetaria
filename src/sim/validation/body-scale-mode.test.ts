@@ -266,6 +266,23 @@ describe('Body scale mode (relative vs real)', () => {
     expect(renderer.hitTest(snapshot, 435, 300, 'real', undefined, 28)).toBeNull();
   });
 
+  it('centers the Sun at the slider radius in real mode at zoom = 1', () => {
+    const canvas = createMockCanvas();
+    const camera = new Camera2D();
+    camera.setSize(800, 600);
+    const renderer = new CanvasRenderer(canvas, camera);
+    const snapshot = makeSnapshot([mockSun, mockEarth, mockJupiter]);
+    const sunPx = 1000;
+
+    renderer.centerOnReference(snapshot.bodies, { mode: 'real', realSunDisplayPx: sunPx });
+    renderer.render(snapshot, { bodyScaleMode: 'real', realSunDisplayPx: sunPx });
+
+    expect(renderer.camera.zoom).toBe(1);
+    expect(renderer.computeBodyRadius(mockSun, 'real', sunPx)).toBeCloseTo(sunPx, 3);
+    const earthScreen = renderer.worldToScreen(mockEarth.position.x, 0);
+    expect(Math.abs(earthScreen.x - 400)).toBeGreaterThan(sunPx);
+  });
+
   it('recovers from relative zoom when entering real mode', () => {
     const canvas = createMockCanvas();
     const camera = new Camera2D();
@@ -275,12 +292,14 @@ describe('Body scale mode (relative vs real)', () => {
     const renderer = new CanvasRenderer(canvas, camera);
     const snapshot = makeSnapshot([mockSun, mockEarth, mockJupiter]);
 
+    renderer.centerOnReference(snapshot.bodies, { mode: 'real', realSunDisplayPx: 100 });
     renderer.render(snapshot, { bodyScaleMode: 'real', realSunDisplayPx: 100 });
     const sunScreen = renderer.worldToScreen(0, 0);
     const earthScreen = renderer.worldToScreen(mockEarth.position.x, 0);
     const separation = Math.hypot(earthScreen.x - sunScreen.x, earthScreen.y - sunScreen.y);
     expect(separation).toBeGreaterThan(10);
-    expect(renderer.camera.zoom).toBeGreaterThanOrEqual(1);
+    expect(renderer.camera.zoom).toBe(1);
+    expect(renderer.computeBodyRadius(mockSun, 'real', 100)).toBeCloseTo(100, 3);
   });
 
   it('keeps Galilean moons outside Jupiter disk in real scale', () => {

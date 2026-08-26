@@ -22,8 +22,9 @@ import {
 } from '@/sim/catalog/solar-system';
 import type { CelestialBody } from '@/sim/types';
 import {
-  MAX_REAL_SUN_DISPLAY_PX,
-  MIN_REAL_SUN_DISPLAY_PX,
+  formatRealSunDisplayPx,
+  REAL_SUN_SLIDER_LOG_MAX,
+  REAL_SUN_SLIDER_LOG_MIN,
 } from '@/sim/visual/display-radius';
 
 const CATEGORY_LABELS: { key: CatalogCategory | 'all'; label: string; icon: string }[] = [
@@ -290,14 +291,14 @@ export function Toolbar() {
         )}
         {bodyScaleMode === 'real' && (
           <label className="sun-scale-control" title="Escala física del sistema; baja el Sol para ver más órbitas">
-            <span>Sol {Math.round(realSunDisplayPx)}px</span>
+            <span>Sol {formatRealSunDisplayPx(realSunDisplayPx)}</span>
             <input
               type="range"
-              min={MIN_REAL_SUN_DISPLAY_PX}
-              max={MAX_REAL_SUN_DISPLAY_PX}
-              step={1}
-              value={realSunDisplayPx}
-              onChange={(e) => setRealSunDisplayPx(Number(e.target.value))}
+              min={REAL_SUN_SLIDER_LOG_MIN}
+              max={REAL_SUN_SLIDER_LOG_MAX}
+              step={0.05}
+              value={Math.log10(realSunDisplayPx)}
+              onChange={(e) => setRealSunDisplayPx(10 ** Number(e.target.value))}
               aria-label="Tamaño del Sol en escala física"
             />
           </label>

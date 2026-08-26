@@ -11,7 +11,7 @@ Simulador interactivo 2D de física planetaria/orbital para navegador.
 - Escala temporal desacoplada de `physicsDt` con indicador Objetivo/Real (`requestedTimeScale` vs `effectiveTimeScale`); Kuiper usa `physicsDt = 7200` s sin lunas. El motor orbital evalúa el instante pedido sin subpasos Leapfrog.
 - Métricas de conservación (energía, momento, momento angular)
 - Canvas 2D: pan, zoom, trails, selección, follow camera; los trails de lunas se muestran relativos a su planeta padre
-- Escala de cuerpos: modo **Relativo** (todos visibles, mínimo legible) o modo **Real** (una escala física única: tamaños y distancias proporcionales al Sol; slider del Sol 12–1000 px)
+- Escala de cuerpos: modo **Relativo** (todos visibles, mínimo legible) o modo **Real** (una escala física única: tamaños y distancias proporcionales al Sol; slider del Sol 12 px–1M px, default 1000 px)
 - Colisiones: fusionar o atravesar (solo motor N-body; las fusiones muestran una onda y etiqueta de impacto)
 - Solver N-body intercambiable (`DirectNBodySolver` + stub `BarnesHutSolver`) + `OrbitalEngine` Kepler
 

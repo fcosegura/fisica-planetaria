@@ -134,7 +134,7 @@ SimulationDocument → createSimulationRuntime(engineKind)
   mínimo legible; `relativeSunDisplayPx` es ajustable (12–64 px). Distancias
   orbitales usan solo el zoom de cámara. **Real:** un solo factor
   `px/m = realSunDisplayPx / R_ref` escala radios, distancias, órbitas, trails e
-  interacción; `realSunDisplayPx` es ajustable (12–1000 px). Bajar el Sol
+  interacción; `realSunDisplayPx` es ajustable (12–1M px). Bajar el Sol
   reduce todo el sistema; subirlo da detalle en planetas y lunas (pan/zoom para
   navegar). No inflar solo un cuerpo: las lunas galileanas quedarían dentro del
   disco de Júpiter.

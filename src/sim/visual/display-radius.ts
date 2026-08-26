@@ -11,9 +11,9 @@ export const DEFAULT_RELATIVE_SUN_DISPLAY_PX = 28;
 export const MIN_RELATIVE_DISPLAY_PX = 2.5;
 
 /** Real mode: screen radius (px) of the scale reference at camera zoom = 1. */
-export const DEFAULT_REAL_SUN_DISPLAY_PX = 50;
+export const DEFAULT_REAL_SUN_DISPLAY_PX = 1000;
 export const MIN_REAL_SUN_DISPLAY_PX = 12;
-export const MAX_REAL_SUN_DISPLAY_PX = 1000;
+export const MAX_REAL_SUN_DISPLAY_PX = 1_000_000;
 
 export function relativeDisplayRadius(
   physicalRadius: number,
@@ -79,3 +79,13 @@ export function realDisplayRadius(
   if (!Number.isFinite(physicalRadius) || physicalRadius <= 0) return 0;
   return physicalRadius * realPxPerMeter(referenceDisplayPx, referenceRadius);
 }
+
+export function formatRealSunDisplayPx(px: number): string {
+  if (px >= 1_000_000) return `${(px / 1_000_000).toFixed(px >= 10_000_000 ? 0 : 1)}M`;
+  if (px >= 10_000) return `${Math.round(px / 1000)}k`;
+  if (px >= 1000) return `${(px / 1000).toFixed(1)}k`;
+  return String(Math.round(px));
+}
+
+export const REAL_SUN_SLIDER_LOG_MIN = Math.log10(MIN_REAL_SUN_DISPLAY_PX);
+export const REAL_SUN_SLIDER_LOG_MAX = Math.log10(MAX_REAL_SUN_DISPLAY_PX);
