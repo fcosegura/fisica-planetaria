@@ -12,7 +12,6 @@ import {
   SUN_TEMPLATE,
   bodyAroundParent,
   bodyFromSunOrbit,
-  catalogBodyAlreadyPresent,
   createAsteroidBeltSwarm,
   createEverythingKnownSolarSystem,
   createKuiperBeltSwarm,
@@ -22,6 +21,10 @@ import {
   type PlanetTemplate,
 } from '@/sim/catalog/solar-system';
 import type { CelestialBody } from '@/sim/types';
+import {
+  MAX_REAL_SUN_DISPLAY_PX,
+  MIN_REAL_SUN_DISPLAY_PX,
+} from '@/sim/visual/display-radius';
 
 const CATEGORY_LABELS: { key: CatalogCategory | 'all'; label: string; icon: string }[] = [
   { key: 'all', label: 'Todo', icon: '🌌' },
@@ -46,7 +49,12 @@ export function Toolbar() {
   const setBodyScaleMode = useSimulationStore((s) => s.setBodyScaleMode);
   const relativeSunDisplayPx = useSimulationStore((s) => s.relativeSunDisplayPx);
   const setRelativeSunDisplayPx = useSimulationStore((s) => s.setRelativeSunDisplayPx);
+  const realSunDisplayPx = useSimulationStore((s) => s.realSunDisplayPx);
+  const setRealSunDisplayPx = useSimulationStore((s) => s.setRealSunDisplayPx);
   const setCollisionMode = useSimulationStore((s) => s.setCollisionMode);
+  const removeBody = useSimulationStore((s) => s.removeBody);
+  const selectedId = useSimulationStore((s) => s.selectedId);
+  const setSelectedId = useSimulationStore((s) => s.setSelectedId);
   const setEngineKind = useSimulationStore((s) => s.setEngineKind);
   const addBody = useSimulationStore((s) => s.addBody);
   const addBodies = useSimulationStore((s) => s.addBodies);
@@ -177,7 +185,16 @@ export function Toolbar() {
   const handleAddBody = (template: PlanetTemplate) => {
     if (!engine) return;
     const bodies = engine.getBodies();
-    if (catalogBodyAlreadyPresent(bodies, template)) return;
+    const presentBody = bodies.find(
+      (body) =>
+        body.name.toLowerCase() === template.name.toLowerCase() ||
+        body.id.startsWith(template.id),
+    );
+    if (presentBody) {
+      removeBody(presentBody.id);
+      fitCamera();
+      return;
+    }
 
     if (template.parent !== 'sun') {
       // It's a moon/satellite around another body
@@ -251,8 +268,8 @@ export function Toolbar() {
           aria-label="Alternar escala de tamaño de cuerpos: relativo o real"
           title={
             bodyScaleMode === 'real'
-              ? 'Tamaño real (escala física en metros, visible al hacer zoom). Clic para cambiar a relativo.'
-              : 'Tamaño relativo (el Sol es la referencia; los demás = Sol × R/R☉). Clic para cambiar a real.'
+              ? 'Escala real: tamaños y distancias proporcionales al Sol. Baja el Sol para ver más sistema.'
+              : 'Tamaño relativo: todos los cuerpos visibles con mínimo legible. Clic para cambiar a real.'
           }
         >
           {bodyScaleMode === 'real' ? '🪐 Tamaño: Real' : '🔍 Tamaño: Relativo'}
@@ -271,6 +288,20 @@ export function Toolbar() {
             />
           </label>
         )}
+        {bodyScaleMode === 'real' && (
+          <label className="sun-scale-control" title="Escala física del sistema; baja el Sol para ver más órbitas">
+            <span>Sol {Math.round(realSunDisplayPx)}px</span>
+            <input
+              type="range"
+              min={MIN_REAL_SUN_DISPLAY_PX}
+              max={MAX_REAL_SUN_DISPLAY_PX}
+              step={1}
+              value={realSunDisplayPx}
+              onChange={(e) => setRealSunDisplayPx(Number(e.target.value))}
+              aria-label="Tamaño del Sol en escala física"
+            />
+          </label>
+        )}
         <button
           onClick={toggleDebug}
           className={showDebug ? 'active' : ''}
@@ -282,9 +313,10 @@ export function Toolbar() {
           value={engine?.getConfig().collisionMode ?? 'merge'}
           onChange={(e) => setCollisionMode(e.target.value as 'merge' | 'ignore')}
           aria-label="Modo de colisión"
+          title="Merge fusiona los cuerpos y muestra una onda de impacto; ignore permite que se atraviesen"
         >
-          <option value="merge">Colisión: merge</option>
-          <option value="ignore">Colisión: ignore</option>
+          <option value="merge">Colisión: fusionar</option>
+          <option value="ignore">Colisión: atravesar</option>
         </select>
       </div>
 
@@ -320,6 +352,23 @@ export function Toolbar() {
           {ALL_SCENARIOS.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="toolbar-row body-selector">
+        <label htmlFor="body-selector">Objeto:</label>
+        <select
+          id="body-selector"
+          value={snapshot?.bodies.some((body) => body.id === selectedId) ? selectedId ?? '' : ''}
+          onChange={(e) => setSelectedId(e.target.value || null)}
+          aria-label="Seleccionar objeto de la simulación"
+        >
+          <option value="">Seleccionar objeto…</option>
+          {currentBodies.map((body) => (
+            <option key={body.id} value={body.id}>
+              {body.name}
             </option>
           ))}
         </select>
@@ -401,10 +450,11 @@ export function Toolbar() {
               <button
                 key={p.id}
                 className={`planet-btn ${present ? 'present' : ''}`}
-                disabled={present}
+                aria-pressed={present}
+                aria-label={present ? `Quitar ${p.name}` : `Añadir ${p.name}`}
                 title={
                   present
-                    ? `${p.name} ya está en la simulación`
+                    ? `${p.name} está en la simulación. Clic para quitarlo`
                     : parentName
                       ? `${p.description ?? ''} (Órbita alrededor de ${parentName})`
                       : p.eccentricity && p.eccentricity > 0.02
@@ -419,6 +469,7 @@ export function Toolbar() {
                   <span className="planet-name">{p.name}</span>
                   {parentName && <span className="planet-sub">({parentName})</span>}
                 </span>
+                {present && <span className="planet-action" aria-hidden="true">×</span>}
               </button>
             );
           })}
@@ -437,8 +488,8 @@ export function Toolbar() {
         {placementError && <p className="hint placement-error">{placementError}</p>}
         <p className="hint">
           {bodyScaleMode === 'relative'
-            ? '🔍 Tamaño relativo: el Sol es el disco más grande; los demás se escalan con R/R☉ (mínimo legible). Ajusta el slider Sol.'
-            : '🪐 Tamaño real: escala métrica física (haz zoom en planetas/lunas para apreciar sus diámetros).'}
+            ? '🔍 Relativo: todos los cuerpos visibles; el Sol es referencia con mínimo legible.'
+            : '🪐 Real: una escala para tamaños y distancias (R/R☉). Baja el Sol para ver más sistema; súbelo para detalle.'}
         </p>
         <p className="hint">
           Canvas: +/− zoom, ⊙ centrar, ○ seguir, ✕ eliminar el cuerpo seleccionado. Seleccionar un cuerpo inicia el seguimiento.

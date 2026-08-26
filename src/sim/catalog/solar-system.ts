@@ -887,6 +887,7 @@ export function bodyAroundParent(
 
   return {
     id: nextCatalogBodyId(template.id),
+    parentId: parentBody.id,
     name: template.name,
     mass: template.mass,
     radius: template.radius,

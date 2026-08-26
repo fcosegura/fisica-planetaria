@@ -93,6 +93,8 @@ describe('Solar system catalog', () => {
     const ioTpl = MOONS_CATALOG.find((m) => m.id === 'io')!;
     const io = bodyAroundParent(ioTpl, jupiter, 0);
 
+    expect(io.parentId).toBe(jupiter.id);
+
     // Distance to Jupiter should match Io orbit radius
     const distToJupiter = Math.hypot(io.position.x - jupiter.position.x, io.position.y - jupiter.position.y);
     expect(distToJupiter).toBeCloseTo(perihelionRadius(ioTpl.orbitRadius, ioTpl.eccentricity), -3);

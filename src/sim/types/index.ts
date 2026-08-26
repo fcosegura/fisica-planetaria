@@ -12,6 +12,8 @@ export interface BodyVisual {
 
 export interface CelestialBody {
   id: string;
+  /** Immediate orbital parent for local trail rendering (e.g. a moon → Saturn). */
+  parentId?: string;
   name: string;
   mass: number;
   radius: number;
@@ -86,8 +88,16 @@ export interface TimeScaleStatus {
   capReason: 'budget' | 'maxSubsteps' | 'incompatible' | null;
 }
 
+export interface CollisionEvent {
+  type: 'merge';
+  position: Vec2;
+  radius: number;
+  bodyNames: string[];
+}
+
 export interface SnapshotBody {
   id: string;
+  parentId?: string;
   name: string;
   position: Vec2;
   velocity: Vec2;
@@ -105,6 +115,8 @@ export interface SimSnapshot {
   timeScale: TimeScaleStatus;
   engineKind: EngineKind;
   engineCompatibility: EngineCompatibility;
+  /** Event produced during the most recent physics advance, if any. */
+  collisionEvent?: CollisionEvent | null;
 }
 
 export interface ScenarioPreset {

@@ -4,6 +4,7 @@ import { Camera2D } from '@/render/camera2d';
 import {
   DEFAULT_RELATIVE_SUN_DISPLAY_PX,
   findScaleReferenceRadius,
+  realDisplayRadius,
   relativeDisplayRadius,
 } from '../visual/display-radius';
 import type { SimSnapshot, SnapshotBody } from '../types';
@@ -11,6 +12,7 @@ import type { SimSnapshot, SnapshotBody } from '../types';
 const R_EARTH = 6.371e6;
 const R_SUN = 6.96e8;
 const R_JUPITER = 6.991e7;
+const AU = 1.496e11;
 
 function createMockCanvas(): HTMLCanvasElement {
   const canvas = {
@@ -41,7 +43,7 @@ const mockEarth: SnapshotBody = {
   name: 'Tierra',
   mass: 5.972e24,
   radius: R_EARTH,
-  position: { x: 1.496e11, y: 0 },
+  position: { x: AU, y: 0 },
   velocity: { x: 0, y: 29780 },
   state: 'dynamic',
   visual: {
@@ -84,6 +86,42 @@ const mockJupiter: SnapshotBody = {
   },
 };
 
+function makeSnapshot(bodies: SnapshotBody[]): SimSnapshot {
+  return {
+    time: 0,
+    step: 0,
+    bodies,
+    diagnostics: {
+      kineticEnergy: 0,
+      potentialEnergy: 0,
+      totalEnergy: 0,
+      linearMomentum: { x: 0, y: 0 },
+      angularMomentum: 0,
+      initial: {
+        kineticEnergy: 0,
+        potentialEnergy: 0,
+        totalEnergy: 0,
+        linearMomentum: { x: 0, y: 0 },
+        angularMomentum: 0,
+      },
+      relativeEnergyError: 0,
+      relativeMomentumError: 0,
+      relativeAngularMomentumError: 0,
+    },
+    timeScale: {
+      requestedTimeScale: 1,
+      effectiveTimeScale: 1,
+      physicsDt: 3600,
+      substepsRequested: 1,
+      substepsExecuted: 1,
+      isCapped: false,
+      capReason: null,
+    },
+    engineKind: 'nbody',
+    engineCompatibility: { compatible: true, code: 'ok', reason: null },
+  };
+}
+
 describe('Body scale mode (relative vs real)', () => {
   it('computes relative radius from the Sun reference size', () => {
     const canvas = createMockCanvas();
@@ -91,42 +129,10 @@ describe('Body scale mode (relative vs real)', () => {
     camera.zoom = 1e-9;
     const renderer = new CanvasRenderer(canvas, camera);
 
-    renderer.render(
-      {
-        time: 0,
-        step: 0,
-        bodies: [mockSun, mockEarth, mockJupiter],
-        diagnostics: {
-          kineticEnergy: 0,
-          potentialEnergy: 0,
-          totalEnergy: 0,
-          linearMomentum: { x: 0, y: 0 },
-          angularMomentum: 0,
-          initial: {
-            kineticEnergy: 0,
-            potentialEnergy: 0,
-            totalEnergy: 0,
-            linearMomentum: { x: 0, y: 0 },
-            angularMomentum: 0,
-          },
-          relativeEnergyError: 0,
-          relativeMomentumError: 0,
-          relativeAngularMomentumError: 0,
-        },
-        timeScale: {
-          requestedTimeScale: 1,
-          effectiveTimeScale: 1,
-          physicsDt: 3600,
-          substepsRequested: 1,
-          substepsExecuted: 1,
-          isCapped: false,
-          capReason: null,
-        },
-        engineKind: 'nbody',
-        engineCompatibility: { compatible: true, code: 'ok', reason: null },
-      },
-      { bodyScaleMode: 'relative', relativeSunDisplayPx: 28 },
-    );
+    renderer.render(makeSnapshot([mockSun, mockEarth, mockJupiter]), {
+      bodyScaleMode: 'relative',
+      relativeSunDisplayPx: 28,
+    });
 
     expect(renderer.computeBodyRadius(mockSun, 'relative')).toBe(28);
     expect(renderer.computeBodyRadius(mockJupiter, 'relative')).toBeCloseTo(
@@ -154,22 +160,90 @@ describe('Body scale mode (relative vs real)', () => {
     expect(findScaleReferenceRadius([mockEarth, mockJupiter])).toBe(R_JUPITER);
   });
 
-  it('computes real radius as radius * zoom (with 0.5px minimum)', () => {
+  it('computes real radii as exact sun-relative proportions at zoom = 1', () => {
     const canvas = createMockCanvas();
     const camera = new Camera2D();
-    // At zoom = 1e-9 px/m, Earth (6.371e6 m) = ~0.006 px -> clamped to 0.5 px
-    camera.zoom = 1e-9;
+    camera.zoom = 1;
+    const renderer = new CanvasRenderer(canvas, camera);
+    const sunPx = 1000;
+
+    renderer.render(makeSnapshot([mockSun, mockEarth, mockJupiter]), {
+      bodyScaleMode: 'real',
+      realSunDisplayPx: sunPx,
+    });
+
+    expect(renderer.computeBodyRadius(mockSun, 'real', sunPx)).toBeCloseTo(sunPx, 6);
+    expect(renderer.computeBodyRadius(mockEarth, 'real', sunPx)).toBeCloseTo(
+      realDisplayRadius(R_EARTH, sunPx, R_SUN),
+      6,
+    );
+    expect(renderer.computeBodyRadius(mockJupiter, 'real', sunPx)).toBeCloseTo(
+      realDisplayRadius(R_JUPITER, sunPx, R_SUN),
+      4,
+    );
+    expect(renderer.computeBodyRadius(mockEarth, 'real', sunPx)).toBeCloseTo(9.15, 1);
+  });
+
+  it('scales real positions and radii together when the Sun size changes', () => {
+    const canvas = createMockCanvas();
+    const camera = new Camera2D();
+    camera.zoom = 1;
+    camera.center = { x: 0, y: 0 };
+    const renderer = new CanvasRenderer(canvas, camera);
+    const snapshot = makeSnapshot([mockSun, mockEarth]);
+
+    renderer.render(snapshot, { bodyScaleMode: 'real', realSunDisplayPx: 1000 });
+    const earthScreenLarge = renderer.worldToScreen(mockEarth.position.x, mockEarth.position.y);
+    const earthRadiusLarge = renderer.computeBodyRadius(mockEarth, 'real', 1000);
+
+    renderer.render(snapshot, { bodyScaleMode: 'real', realSunDisplayPx: 100 });
+    const earthScreenSmall = renderer.worldToScreen(mockEarth.position.x, mockEarth.position.y);
+    const earthRadiusSmall = renderer.computeBodyRadius(mockEarth, 'real', 100);
+
+    expect((earthScreenLarge.x - 400) / (earthScreenSmall.x - 400)).toBeCloseTo(10, 5);
+    expect(earthRadiusLarge / earthRadiusSmall).toBeCloseTo(10, 5);
+    expect(earthScreenLarge.x).toBeGreaterThan(earthRadiusLarge);
+  });
+
+  it('keeps Earth outside the Sun disk in real mode', () => {
+    const canvas = createMockCanvas();
+    const camera = new Camera2D();
+    camera.zoom = 1;
+    camera.center = { x: 0, y: 0 };
+    const renderer = new CanvasRenderer(canvas, camera);
+    const sunPx = 1000;
+
+    renderer.render(makeSnapshot([mockSun, mockEarth]), {
+      bodyScaleMode: 'real',
+      realSunDisplayPx: sunPx,
+    });
+
+    const sunR = renderer.computeBodyRadius(mockSun, 'real', sunPx);
+    const earthR = renderer.computeBodyRadius(mockEarth, 'real', sunPx);
+    const earthScreen = renderer.worldToScreen(mockEarth.position.x, mockEarth.position.y);
+    const orbitPx = Math.hypot(earthScreen.x - 400, earthScreen.y - 300);
+
+    expect(orbitPx).toBeGreaterThan(sunR + earthR);
+  });
+
+  it('round-trips screen/world coordinates in real mode', () => {
+    const canvas = createMockCanvas();
+    const camera = new Camera2D();
+    camera.zoom = 2;
+    camera.center = { x: 1e10, y: -2e10 };
     const renderer = new CanvasRenderer(canvas, camera);
 
-    expect(renderer.computeBodyRadius(mockEarth, 'real')).toBe(0.5);
+    renderer.render(makeSnapshot([mockSun, mockEarth]), {
+      bodyScaleMode: 'real',
+      realSunDisplayPx: 500,
+    });
 
-    // Zoom in on Earth: 1e-6 px/m -> 6.371e6 * 1e-6 = 6.371 px
-    camera.zoom = 1e-6;
-    expect(renderer.computeBodyRadius(mockEarth, 'real')).toBeCloseTo(6.371, 3);
+    const world = { x: 1.2e11, y: 3.4e10 };
+    const screen = renderer.worldToScreen(world.x, world.y);
+    const back = renderer.screenToWorld(screen.x, screen.y);
 
-    // Zoom for Sun: 1e-8 px/m -> 6.96e8 * 1e-8 = 6.96 px
-    camera.zoom = 1e-8;
-    expect(renderer.computeBodyRadius(mockSun, 'real')).toBeCloseTo(6.96, 2);
+    expect(back.x).toBeCloseTo(world.x, 3);
+    expect(back.y).toBeCloseTo(world.y, 3);
   });
 
   it('hitTest works in both relative and real modes', () => {
@@ -179,51 +253,34 @@ describe('Body scale mode (relative vs real)', () => {
     camera.center = { x: 0, y: 0 };
     camera.zoom = 1e-9;
     const renderer = new CanvasRenderer(canvas, camera);
+    const snapshot = makeSnapshot([mockSun]);
 
-    const snapshot: SimSnapshot = {
-      time: 0,
-      step: 0,
-      bodies: [mockSun],
-      diagnostics: {
-        kineticEnergy: 0,
-        potentialEnergy: 0,
-        totalEnergy: 0,
-        linearMomentum: { x: 0, y: 0 },
-        angularMomentum: 0,
-        initial: {
-          kineticEnergy: 0,
-          potentialEnergy: 0,
-          totalEnergy: 0,
-          linearMomentum: { x: 0, y: 0 },
-          angularMomentum: 0,
-        },
-        relativeEnergyError: 0,
-        relativeMomentumError: 0,
-        relativeAngularMomentumError: 0,
-      },
-      timeScale: {
-        requestedTimeScale: 1,
-        effectiveTimeScale: 1,
-        physicsDt: 3600,
-        substepsRequested: 1,
-        substepsExecuted: 1,
-        isCapped: false,
-        capReason: null,
-      },
-      engineKind: 'nbody',
-      engineCompatibility: { compatible: true, code: 'ok', reason: null },
-    };
-
-    // Sun is at center: screen coord = (400, 300)
-    // Relative hit test: displayRadius = 28, hit radius = Math.max(8, 28) + 4 = 32 px
     expect(renderer.hitTest(snapshot, 400, 300, 'relative', 28)).toBe('sun');
     expect(renderer.hitTest(snapshot, 420, 300, 'relative', 28)).toBe('sun');
     expect(renderer.hitTest(snapshot, 450, 300, 'relative', 28)).toBeNull();
 
-    // Real hit test: Sun radius = 6.96e8 * 1e-9 = 0.696 px -> effective click radius = max(8, 0.696) + 4 = 12 px
-    expect(renderer.hitTest(snapshot, 400, 300, 'real')).toBe('sun');
-    expect(renderer.hitTest(snapshot, 410, 300, 'real')).toBe('sun');
-    expect(renderer.hitTest(snapshot, 420, 300, 'real')).toBeNull();
+    camera.zoom = 1;
+    renderer.render(snapshot, { bodyScaleMode: 'real', realSunDisplayPx: 28 });
+    expect(renderer.hitTest(snapshot, 400, 300, 'real', undefined, 28)).toBe('sun');
+    expect(renderer.hitTest(snapshot, 410, 300, 'real', undefined, 28)).toBe('sun');
+    expect(renderer.hitTest(snapshot, 435, 300, 'real', undefined, 28)).toBeNull();
+  });
+
+  it('recovers from relative zoom when entering real mode', () => {
+    const canvas = createMockCanvas();
+    const camera = new Camera2D();
+    camera.setSize(800, 600);
+    camera.center = { x: 0, y: 0 };
+    camera.zoom = 1e-9;
+    const renderer = new CanvasRenderer(canvas, camera);
+    const snapshot = makeSnapshot([mockSun, mockEarth, mockJupiter]);
+
+    renderer.render(snapshot, { bodyScaleMode: 'real', realSunDisplayPx: 100 });
+    const sunScreen = renderer.worldToScreen(0, 0);
+    const earthScreen = renderer.worldToScreen(mockEarth.position.x, 0);
+    const separation = Math.hypot(earthScreen.x - sunScreen.x, earthScreen.y - sunScreen.y);
+    expect(separation).toBeGreaterThan(10);
+    expect(renderer.camera.zoom).toBeGreaterThanOrEqual(1);
   });
 
   it('keeps Galilean moons outside Jupiter disk in real scale', () => {
@@ -237,9 +294,10 @@ describe('Body scale mode (relative vs real)', () => {
 
     const canvas = createMockCanvas();
     const camera = new Camera2D();
-    // Zoomed in on the Jupiter system: Callisto orbit ≈ 400 px
-    camera.zoom = 400 / moonOrbits.callisto;
+    camera.zoom = 1;
     const renderer = new CanvasRenderer(canvas, camera);
+    const callistoOrbit = moonOrbits.callisto;
+    const refDisplayPx = (400 * jupiterRadius) / callistoOrbit;
 
     const jupiter: SnapshotBody = {
       ...mockEarth,
@@ -248,12 +306,19 @@ describe('Body scale mode (relative vs real)', () => {
       radius: jupiterRadius,
       visual: { ...mockEarth.visual, displayRadius: 16, color: '#f59e0b' },
     };
-    const jupiterPx = renderer.computeBodyRadius(jupiter, 'real');
 
-    expect(jupiterPx).toBeCloseTo(jupiterRadius * camera.zoom, 6);
-    expect(moonOrbits.io * camera.zoom).toBeGreaterThan(jupiterPx);
-    expect(moonOrbits.europa * camera.zoom).toBeGreaterThan(jupiterPx);
-    expect(moonOrbits.ganymede * camera.zoom).toBeGreaterThan(jupiterPx);
-    expect(moonOrbits.callisto * camera.zoom).toBeGreaterThan(jupiterPx);
+    renderer.render(makeSnapshot([jupiter]), {
+      bodyScaleMode: 'real',
+      realSunDisplayPx: refDisplayPx,
+    });
+
+    const jupiterPx = renderer.computeBodyRadius(jupiter, 'real', refDisplayPx);
+    const pxPerM = refDisplayPx / jupiterRadius;
+
+    expect(jupiterPx).toBeCloseTo(refDisplayPx, 6);
+    expect(moonOrbits.io * pxPerM).toBeGreaterThan(jupiterPx);
+    expect(moonOrbits.europa * pxPerM).toBeGreaterThan(jupiterPx);
+    expect(moonOrbits.ganymede * pxPerM).toBeGreaterThan(jupiterPx);
+    expect(moonOrbits.callisto * pxPerM).toBeCloseTo(400, 3);
   });
 });

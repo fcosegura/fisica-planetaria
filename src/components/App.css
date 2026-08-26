@@ -92,6 +92,11 @@
   accent-color: #fbbf24;
 }
 
+.canvas-scale-slider small {
+  color: #64748b;
+  font-size: 10px;
+}
+
 .canvas-follow-hint {
   margin: 0;
   pointer-events: none;
@@ -152,6 +157,16 @@
 
 .toolbar-row.scenarios select {
   flex: 1;
+}
+
+.toolbar-row.body-selector label {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.toolbar-row.body-selector select {
+  flex: 1;
+  min-width: 0;
 }
 
 .engine-select {
@@ -583,7 +598,25 @@ button.danger {
   flex-shrink: 0;
 }
 
-.planet-btn.present,
+.planet-btn.present {
+  opacity: 0.8;
+  cursor: pointer;
+  border-style: dashed;
+}
+
+.planet-btn.present:hover {
+  opacity: 1;
+  background: rgba(239, 68, 68, 0.16);
+}
+
+.planet-action {
+  margin-left: auto;
+  color: #fca5a5;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .planet-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
@@ -600,4 +633,3 @@ button.danger {
   color: #64748b;
   line-height: 1.35;
 }
-

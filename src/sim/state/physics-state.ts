@@ -4,6 +4,7 @@ import { computeConservationMetrics } from '../diagnostics/conservation';
 
 export interface BodyMeta {
   id: string;
+  parentId?: string;
   name: string;
   radius: number;
   visual: CelestialBody['visual'];
@@ -38,6 +39,7 @@ export class PhysicsState {
       this.ids[i] = b.id;
       this.meta[i] = {
         id: b.id,
+        parentId: b.parentId,
         name: b.name,
         radius: b.radius,
         visual: { ...b.visual },
@@ -58,6 +60,7 @@ export class PhysicsState {
       const m = this.meta[i]!;
       out.push({
         id: m.id,
+        parentId: m.parentId,
         name: m.name,
         mass: this.mass[i]!,
         radius: m.radius,
@@ -82,6 +85,7 @@ export class PhysicsState {
       const m = this.meta[i]!;
       bodies.push({
         id: m.id,
+        parentId: m.parentId,
         name: m.name,
         mass: this.mass[i]!,
         radius: m.radius,

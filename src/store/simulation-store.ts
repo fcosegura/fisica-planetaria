@@ -5,7 +5,7 @@ import { createDocument } from '@/sim/document/simulation-document';
 import { scenarioToDocument, solarSystem } from '@/sim/scenarios';
 import type { CelestialBody, EngineKind, SimSnapshot, ScenarioPreset, Vec2 } from '@/sim/types';
 import { CanvasRenderer, type BodyScaleMode } from '@/render/canvas-renderer';
-import { DEFAULT_RELATIVE_SUN_DISPLAY_PX } from '@/sim/visual/display-radius';
+import { DEFAULT_RELATIVE_SUN_DISPLAY_PX, DEFAULT_REAL_SUN_DISPLAY_PX, MAX_REAL_SUN_DISPLAY_PX, MIN_REAL_SUN_DISPLAY_PX } from '@/sim/visual/display-radius';
 import { makeBodyAtPosition } from '@/sim/orbit/compute-orbit';
 import { makeVisual, nextCatalogBodyId } from '@/sim/catalog/solar-system';
 import { resolvePhysicsDt } from '@/sim/config/physics-dt';
@@ -20,6 +20,8 @@ export interface SimulationStore {
   bodyScaleMode: BodyScaleMode;
   /** Screen radius (px) of the Sun in relative scale mode. */
   relativeSunDisplayPx: number;
+  /** Screen radius (px) of the scale reference in real mode at zoom = 1. */
+  realSunDisplayPx: number;
   placementMode: boolean;
   placementError: string | null;
   currentScenarioId: string;
@@ -36,6 +38,7 @@ export interface SimulationStore {
   setBodyScaleMode: (mode: BodyScaleMode) => void;
   toggleBodyScaleMode: () => void;
   setRelativeSunDisplayPx: (px: number) => void;
+  setRealSunDisplayPx: (px: number) => void;
   setPlacementMode: (enabled: boolean) => void;
   addBodyAtPosition: (position: Vec2) => boolean;
   updateBody: (body: CelestialBody) => void;
@@ -68,6 +71,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   showDebug: false,
   bodyScaleMode: 'relative',
   relativeSunDisplayPx: DEFAULT_RELATIVE_SUN_DISPLAY_PX,
+  realSunDisplayPx: DEFAULT_REAL_SUN_DISPLAY_PX,
   placementMode: false,
   placementError: null,
   currentScenarioId: solarSystem.id,
@@ -130,14 +134,26 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
   toggleDebug: () => set((s) => ({ showDebug: !s.showDebug })),
 
-  setBodyScaleMode: (mode) => set({ bodyScaleMode: mode }),
+  setBodyScaleMode: (mode) => {
+    const renderer = get().renderer;
+    if (renderer) renderer.camera.zoom = 1;
+    set({ bodyScaleMode: mode });
+    get().fitCamera();
+  },
 
-  toggleBodyScaleMode: () =>
-    set((s) => ({ bodyScaleMode: s.bodyScaleMode === 'relative' ? 'real' : 'relative' })),
+  toggleBodyScaleMode: () => {
+    const next = get().bodyScaleMode === 'relative' ? 'real' : 'relative';
+    get().setBodyScaleMode(next);
+  },
 
   setRelativeSunDisplayPx: (px) => {
     const clamped = Math.min(64, Math.max(12, px));
     set({ relativeSunDisplayPx: clamped });
+  },
+
+  setRealSunDisplayPx: (px) => {
+    const clamped = Math.min(MAX_REAL_SUN_DISPLAY_PX, Math.max(MIN_REAL_SUN_DISPLAY_PX, px));
+    set({ realSunDisplayPx: clamped });
   },
 
   setPlacementMode: (enabled) =>
@@ -256,6 +272,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       showDebug,
       bodyScaleMode,
       relativeSunDisplayPx,
+      realSunDisplayPx,
     } = get();
     if (!engine || !renderer) return;
 
@@ -266,20 +283,25 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       showDebug,
       bodyScaleMode,
       relativeSunDisplayPx,
+      realSunDisplayPx,
     });
     set({ snapshot: next });
   },
 
   fitCamera: () => {
-    const { renderer, snapshot } = get();
+    const { renderer, snapshot, bodyScaleMode, realSunDisplayPx, relativeSunDisplayPx } = get();
     if (!renderer || !snapshot) return;
-    renderer.camera.fitBodies(snapshot.bodies.map((b) => b.position));
+    renderer.fitBodies(snapshot.bodies, {
+      mode: bodyScaleMode,
+      realSunDisplayPx,
+      relativeSunDisplayPx,
+    });
   },
 
   zoomBy: (factor) => {
     const { renderer } = get();
     if (!renderer) return;
     const { width, height } = renderer.camera;
-    renderer.camera.zoomAt(factor, width / 2, height / 2);
+    renderer.zoomAt(factor, width / 2, height / 2);
   },
 }));

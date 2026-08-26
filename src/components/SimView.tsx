@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSimulationStore } from '@/store/simulation-store';
 import { CanvasRenderer } from '@/render/canvas-renderer';
-import { displayRadiusFromPhysical } from '@/sim/visual/display-radius';
+import {
+  displayRadiusFromPhysical,
+  MAX_REAL_SUN_DISPLAY_PX,
+  MIN_REAL_SUN_DISPLAY_PX,
+} from '@/sim/visual/display-radius';
 import type { CelestialBody } from '@/sim/types';
 
 /** Text inputs: masses (~1e24) break HTML type="number" and can inject NaN into the sim. */
@@ -219,13 +223,20 @@ function CanvasOverlayControls() {
   const bodyScaleMode = useSimulationStore((s) => s.bodyScaleMode);
   const relativeSunDisplayPx = useSimulationStore((s) => s.relativeSunDisplayPx);
   const setRelativeSunDisplayPx = useSimulationStore((s) => s.setRelativeSunDisplayPx);
+  const realSunDisplayPx = useSimulationStore((s) => s.realSunDisplayPx);
+  const setRealSunDisplayPx = useSimulationStore((s) => s.setRealSunDisplayPx);
   const snapshot = useSimulationStore((s) => s.snapshot);
 
   const selectedName = snapshot?.bodies.find((b) => b.id === selectedId)?.name;
   const isFollowingSelected = Boolean(selectedId && followId === selectedId);
 
   return (
-    <div className="canvas-overlay" onPointerDown={(e) => e.stopPropagation()}>
+    <div
+      className="canvas-overlay"
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
       <div className="canvas-controls" role="toolbar" aria-label="Controles de cámara">
         <button type="button" onClick={() => zoomBy(1.1)} aria-label="Acercar zoom" title="Acercar">
           +
@@ -284,6 +295,22 @@ function CanvasOverlayControls() {
         </label>
       )}
 
+      {bodyScaleMode === 'real' && (
+        <label className="canvas-scale-slider">
+          <span>Sol real ({Math.round(realSunDisplayPx)} px)</span>
+          <input
+            type="range"
+            min={MIN_REAL_SUN_DISPLAY_PX}
+            max={MAX_REAL_SUN_DISPLAY_PX}
+            step={1}
+            value={realSunDisplayPx}
+            onChange={(e) => setRealSunDisplayPx(Number(e.target.value))}
+            aria-label="Tamaño del Sol en escala física; baja para ver más sistema, sube para detalle"
+          />
+          <small>Baja el Sol para ver más sistema; súbelo para planetas y lunas a detalle</small>
+        </label>
+      )}
+
       {followId && (
         <p className="canvas-follow-hint">
           Siguiendo: {snapshot?.bodies.find((b) => b.id === followId)?.name ?? '…'}
@@ -318,9 +345,18 @@ export function SimCanvas() {
 
     const renderer = new CanvasRenderer(canvas);
     attachRenderer(renderer);
+    const store = useSimulationStore.getState();
     if (snapshot) {
-      renderer.camera.fitBodies(snapshot.bodies.map((b) => b.position));
-      renderer.render(snapshot);
+      renderer.fitBodies(snapshot.bodies, {
+        mode: store.bodyScaleMode,
+        realSunDisplayPx: store.realSunDisplayPx,
+        relativeSunDisplayPx: store.relativeSunDisplayPx,
+      });
+      renderer.render(snapshot, {
+        bodyScaleMode: store.bodyScaleMode,
+        relativeSunDisplayPx: store.relativeSunDisplayPx,
+        realSunDisplayPx: store.realSunDisplayPx,
+      });
     }
 
     const onResize = () => renderer.resize();
@@ -350,7 +386,7 @@ export function SimCanvas() {
     if (!renderer) return;
     const factor = e.deltaY > 0 ? 0.9 : 1.1;
     const rect = e.currentTarget.getBoundingClientRect();
-    renderer.camera.zoomAt(factor, e.clientX - rect.left, e.clientY - rect.top);
+    renderer.zoomAt(factor, e.clientX - rect.left, e.clientY - rect.top);
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -365,6 +401,7 @@ export function SimCanvas() {
         sy,
         store.bodyScaleMode,
         store.relativeSunDisplayPx,
+        store.realSunDisplayPx,
       ) ?? null;
     if (hit) {
       setSelectedId(hit);
@@ -383,7 +420,7 @@ export function SimCanvas() {
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const store = useSimulationStore.getState();
-    store.renderer?.camera.pan(sx - drag.x, sy - drag.y);
+    store.renderer?.panScreen(sx - drag.x, sy - drag.y);
     drag.x = sx;
     drag.y = sy;
   };
@@ -397,9 +434,19 @@ export function SimCanvas() {
       const moved = Math.hypot(sx - drag.startX, sy - drag.startY);
       if (moved < 6) {
         const store = useSimulationStore.getState();
-        const world = store.renderer?.camera.screenToWorld(sx, sy);
+        const world = store.renderer?.screenToWorld(sx, sy);
         if (world) addBodyAtPosition(world);
       }
+    }
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    dragRef.current = null;
+  };
+
+  const onPointerCancel = (e: React.PointerEvent) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
     dragRef.current = null;
   };
@@ -415,6 +462,7 @@ export function SimCanvas() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
       />
       <CanvasOverlayControls />
     </div>

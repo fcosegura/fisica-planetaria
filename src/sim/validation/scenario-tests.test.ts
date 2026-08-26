@@ -109,9 +109,15 @@ describe('Sun-Sedna scenario', () => {
 describe('Collision merge', () => {
   it('merges two bodies into one', () => {
     const engine = makeEngine(collisionScenario);
-    runSteps(engine, 5000);
-    const snap = engine.getSnapshot();
-    expect(snap.bodies.length).toBeLessThanOrEqual(2);
+    let collisionSnapshot = engine.getSnapshot();
+    for (let i = 0; i < 5000 && !collisionSnapshot.collisionEvent; i++) {
+      collisionSnapshot = engine.stepOnce();
+    }
+
+    expect(collisionSnapshot.collisionEvent?.type).toBe('merge');
+    expect(collisionSnapshot.collisionEvent?.bodyNames).toEqual(['Cuerpo A', 'Cuerpo B']);
+    expect(collisionSnapshot.bodies).toHaveLength(1);
+    expect(collisionSnapshot.bodies[0]!.name).toBe('Cuerpo A+Cuerpo B');
   });
 });
 

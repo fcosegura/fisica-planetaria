@@ -129,12 +129,15 @@ SimulationDocument → createSimulationRuntime(engineKind)
   cercanas usan 120 s (o conservan un dt ya fino ≤ 300 s, p.ej. Tierra–Luna);
   escenarios lejanos sin lunas (Kuiper) usan 7200 s. No adaptar dt en cada paso.
 - La escala visual, el radio de dibujo y la cámara no deben alterar las
-  magnitudes físicas. En modo tamaño real el radio de dibujo es
-  `radius * zoom` (sin multiplicador extra): inflarlo hace que las lunas
-  galileanas aparezcan dentro del disco de Júpiter. En modo relativo el Sol
-  (o el cuerpo de mayor radio) es la referencia: los demás se dibujan como
-  `sunDisplayPx * (R / R_ref)` con un mínimo legible; `relativeSunDisplayPx`
-  es ajustable en la UI.
+  magnitudes físicas. **Relativo:** el Sol (o el cuerpo de mayor radio) es la
+  referencia; los demás se dibujan como `sunDisplayPx × (R / R_ref)` con un
+  mínimo legible; `relativeSunDisplayPx` es ajustable (12–64 px). Distancias
+  orbitales usan solo el zoom de cámara. **Real:** un solo factor
+  `px/m = realSunDisplayPx / R_ref` escala radios, distancias, órbitas, trails e
+  interacción; `realSunDisplayPx` es ajustable (12–1000 px). Bajar el Sol
+  reduce todo el sistema; subirlo da detalle en planetas y lunas (pan/zoom para
+  navegar). No inflar solo un cuerpo: las lunas galileanas quedarían dentro del
+  disco de Júpiter.
 - Las colisiones se implementan mediante `CollisionPolicy` (`merge` o
   `ignore`). No duplicar esa lógica en el renderer o en los componentes.
 - Evitar cambios silenciosos de escenarios/catalogo: añadir o modificar un

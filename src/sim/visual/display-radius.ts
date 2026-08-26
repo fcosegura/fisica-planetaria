@@ -10,6 +10,11 @@ export const R_SUN = 6.96e8;
 export const DEFAULT_RELATIVE_SUN_DISPLAY_PX = 28;
 export const MIN_RELATIVE_DISPLAY_PX = 2.5;
 
+/** Real mode: screen radius (px) of the scale reference at camera zoom = 1. */
+export const DEFAULT_REAL_SUN_DISPLAY_PX = 50;
+export const MIN_REAL_SUN_DISPLAY_PX = 12;
+export const MAX_REAL_SUN_DISPLAY_PX = 1000;
+
 export function relativeDisplayRadius(
   physicalRadius: number,
   referenceRadius = R_SUN,
@@ -56,4 +61,21 @@ export function displayRadiusFromPhysical(physicalRadius: number, isStar = false
   }
 
   return relativeDisplayRadius(physicalRadius);
+}
+
+/** Pixels per metre at camera zoom = 1 in real (sun-relative) mode. */
+export function realPxPerMeter(referenceDisplayPx: number, referenceRadius: number): number {
+  if (!Number.isFinite(referenceDisplayPx) || referenceDisplayPx <= 0) return 0;
+  if (!Number.isFinite(referenceRadius) || referenceRadius <= 0) return 0;
+  return referenceDisplayPx / referenceRadius;
+}
+
+/** Exact sun-relative disk radius at camera zoom = 1; no readable minimum. */
+export function realDisplayRadius(
+  physicalRadius: number,
+  referenceDisplayPx: number,
+  referenceRadius: number,
+): number {
+  if (!Number.isFinite(physicalRadius) || physicalRadius <= 0) return 0;
+  return physicalRadius * realPxPerMeter(referenceDisplayPx, referenceRadius);
 }

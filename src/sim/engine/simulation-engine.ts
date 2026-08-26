@@ -17,6 +17,7 @@ import type {
   SimConfig,
   SimSnapshot,
   TimeScaleStatus,
+  CollisionEvent,
 } from '../types';
 import type { SimulationRuntime } from './runtime';
 
@@ -65,6 +66,7 @@ export class SimulationEngine implements SimulationRuntime {
   private stepCount = 0;
   private initialMetrics: ConservationSnapshot;
   private lastTimeScale: TimeScaleStatus = emptyTimeScaleStatus(DEFAULT_SIM_CONFIG);
+  private lastCollisionEvent: CollisionEvent | null = null;
 
   constructor(options: SimulationEngineOptions) {
     this.config = { ...options.document.config };
@@ -103,6 +105,7 @@ export class SimulationEngine implements SimulationRuntime {
       ...snap,
       engineKind: 'nbody',
       engineCompatibility: { ...NBODY_COMPATIBLE },
+      collisionEvent: this.lastCollisionEvent,
     };
   }
 
@@ -120,6 +123,7 @@ export class SimulationEngine implements SimulationRuntime {
     this.stepCount = 0;
     this.initialMetrics = computeConservationSnapshot(this.state, this.config.gravityConstant ?? G);
     this.lastTimeScale = emptyTimeScaleStatus(this.config);
+    this.lastCollisionEvent = null;
   }
 
   setTimeScale(scale: number): void {
@@ -148,9 +152,11 @@ export class SimulationEngine implements SimulationRuntime {
   }
 
   stepOnce(): SimSnapshot {
+    this.lastCollisionEvent = null;
     this.integrator.step(this.state, this.solver, this.config.physicsDt);
     const didMerge = this.collision.resolve(this.state, this.config.mergeThresholdFactor);
     if (didMerge) {
+      this.lastCollisionEvent = this.detectMergeEvent();
       this.solver.computeAccelerations(this.state);
     }
     this.simTime += this.config.physicsDt;
@@ -169,12 +175,14 @@ export class SimulationEngine implements SimulationRuntime {
     const maxSteps = this.config.maxSubstepsPerFrame;
     const needed = this.computeSubstepsNeeded();
     let executed = 0;
+    this.lastCollisionEvent = null;
 
     while (executed < needed && executed < maxSteps) {
       if (nowMs !== undefined && performance.now() - start >= budget) break;
       this.integrator.step(this.state, this.solver, this.config.physicsDt);
       const didMerge = this.collision.resolve(this.state, this.config.mergeThresholdFactor);
       if (didMerge) {
+        this.lastCollisionEvent = this.detectMergeEvent();
         this.solver.computeAccelerations(this.state);
       }
       executed++;
@@ -203,6 +211,18 @@ export class SimulationEngine implements SimulationRuntime {
     };
 
     return this.getSnapshot();
+  }
+
+  private detectMergeEvent(): CollisionEvent | null {
+    const mergedBody = this.state.toBodies().find((body) => body.name.includes('+'));
+    if (!mergedBody) return null;
+
+    return {
+      type: 'merge',
+      position: { ...mergedBody.position },
+      radius: mergedBody.radius,
+      bodyNames: mergedBody.name.split('+'),
+    };
   }
 }
 
