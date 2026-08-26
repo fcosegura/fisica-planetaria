@@ -15,22 +15,29 @@ const R_JUPITER = 6.991e7;
 const AU = 1.496e11;
 
 function createMockCanvas(): HTMLCanvasElement {
+  const gradient = {
+    addColorStop: () => {},
+  };
+  const ctx = {
+    setTransform: () => {},
+    save: () => {},
+    restore: () => {},
+    clip: () => {},
+    drawImage: () => {},
+    fillRect: () => {},
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    stroke: () => {},
+    arc: () => {},
+    fill: () => {},
+    fillText: () => {},
+    closePath: () => {},
+    createRadialGradient: () => gradient,
+    createLinearGradient: () => gradient,
+  };
   const canvas = {
-    getContext: () => ({
-      setTransform: () => {},
-      fillRect: () => {},
-      beginPath: () => {},
-      moveTo: () => {},
-      lineTo: () => {},
-      stroke: () => {},
-      arc: () => {},
-      fill: () => {},
-      fillText: () => {},
-      closePath: () => {},
-      createRadialGradient: () => ({
-        addColorStop: () => {},
-      }),
-    }),
+    getContext: () => ctx,
     getBoundingClientRect: () => ({ width: 800, height: 600, top: 0, left: 0 }),
     width: 800,
     height: 600,

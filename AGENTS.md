@@ -104,6 +104,9 @@ SimulationDocument → createSimulationRuntime(engineKind)
   editables del documento y los datos visuales deben permanecer separados.
 - `src/render/` y `src/components/` se ocupan de cámara, canvas e interacción,
   no de implementar reglas físicas.
+- El render Canvas2D dibuja discos con **mapas fotográficos** (NASA/Solar System Scope en
+  `public/textures/planets/`) cacheados por ángulo hacia el Sol + sombreado desde el
+  primario. Es solo visual: no altera masa, radio físico ni integración.
 
 ## Reglas de física y datos
 

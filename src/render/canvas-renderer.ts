@@ -10,6 +10,7 @@ import {
 } from '@/sim/visual/display-radius';
 import { Camera2D } from './camera2d';
 import { TrailBuffer } from './trails';
+import { drawTexturedBodyDisc, resolveBodyTextureKind } from './body-textures';
 
 export type BodyScaleMode = 'relative' | 'real';
 
@@ -142,8 +143,10 @@ export class CanvasRenderer {
       }
     }
 
+    const sunWorldPosition = this.findSunWorldPosition(snapshot.bodies);
+
     for (const body of snapshot.bodies) {
-      this.drawBody(body, body.id === options.selectedId, bodyScaleMode);
+      this.drawBody(body, body.id === options.selectedId, bodyScaleMode, sunWorldPosition);
     }
 
     this.drawCollisionEffect();
@@ -379,10 +382,18 @@ export class CanvasRenderer {
     ctx.stroke();
   }
 
+  private findSunWorldPosition(bodies: ReadonlyArray<SnapshotBody>): Vec2 | null {
+    for (const body of bodies) {
+      if (resolveBodyTextureKind(body) === 'star') return body.position;
+    }
+    return null;
+  }
+
   private drawBody(
     body: SnapshotBody,
     selected: boolean,
     mode: BodyScaleMode = 'relative',
+    sunWorldPosition: Vec2 | null = null,
   ): void {
     const ctx = this.ctx;
     const s = this.worldToScreen(body.position.x, body.position.y);
@@ -412,10 +423,7 @@ export class CanvasRenderer {
       ctx.stroke();
     }
 
-    ctx.fillStyle = body.visual.color;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-    ctx.fill();
+    drawTexturedBodyDisc(ctx, body, s.x, s.y, r, { sunWorldPosition });
 
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.font = '11px system-ui, sans-serif';

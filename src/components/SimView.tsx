@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSimulationStore } from '@/store/simulation-store';
 import { CanvasRenderer } from '@/render/canvas-renderer';
+import { preloadPlanetTextures } from '@/render/body-textures';
 import {
   displayRadiusFromPhysical,
   formatRealSunDisplayPx,
@@ -339,6 +340,10 @@ export function SimCanvas() {
     panning: boolean;
     hitId: string | null;
   } | null>(null);
+
+  useEffect(() => {
+    preloadPlanetTextures();
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;

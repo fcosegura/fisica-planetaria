@@ -3,11 +3,24 @@ export interface Vec2 {
   y: number;
 }
 
+/** Procedural surface style for Canvas2D body rendering (visual only). */
+export type BodyTextureKind =
+  | 'star'
+  | 'earth'
+  | 'venus'
+  | 'mars'
+  | 'gasBand'
+  | 'iceGiant'
+  | 'icy'
+  | 'rocky';
+
 export interface BodyVisual {
   color: string;
   displayRadius: number;
   showTrail: boolean;
   trailLength: number;
+  /** Optional procedural texture; inferred from id/name when omitted. */
+  textureKind?: BodyTextureKind;
 }
 
 export interface CelestialBody {

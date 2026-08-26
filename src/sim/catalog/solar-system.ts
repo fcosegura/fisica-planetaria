@@ -1,5 +1,5 @@
 import { AU, G, M_EARTH, M_MOON, M_SUN } from '../constants';
-import type { CelestialBody, BodyVisual } from '../types';
+import type { BodyTextureKind, CelestialBody, BodyVisual } from '../types';
 import { displayRadiusFromPhysical } from '../visual/display-radius';
 
 export type BodyParentId =
@@ -820,17 +820,76 @@ export function perihelionSpeed(
   return Math.sqrt((G * centralMass * (1 + e)) / (semiMajorAxis * (1 - e)));
 }
 
+const ICY_MOON_IDS = new Set([
+  'europa_moon',
+  'ganymede',
+  'callisto',
+  'enceladus',
+  'tethys',
+  'dione',
+  'rhea',
+  'titan',
+  'ariel',
+  'umbriel',
+  'titania',
+  'oberon',
+  'miranda',
+  'triton',
+  'charon',
+]);
+
+/** Map catalog template → procedural surface kind (visual only). */
+export function textureKindForTemplate(template: PlanetTemplate): BodyTextureKind {
+  switch (template.id) {
+    case 'sun':
+      return 'star';
+    case 'earth':
+      return 'earth';
+    case 'venus':
+      return 'venus';
+    case 'mars':
+      return 'mars';
+    case 'jupiter':
+    case 'saturn':
+      return 'gasBand';
+    case 'uranus':
+    case 'neptune':
+      return 'iceGiant';
+    case 'mercury':
+      return 'rocky';
+    default:
+      break;
+  }
+
+  switch (template.category) {
+    case 'dwarf':
+    case 'kbo':
+    case 'comet':
+      return 'icy';
+    case 'asteroid':
+      return 'rocky';
+    case 'moon':
+      return ICY_MOON_IDS.has(template.id) ? 'icy' : 'rocky';
+    case 'planet':
+      return 'rocky';
+    default:
+      return 'rocky';
+  }
+}
+
 export function makeVisual(
   color: string,
   physicalRadius: number,
   isStar = false,
   customTrailLength = 400,
+  textureKind?: BodyTextureKind,
 ): BodyVisual {
   return {
     color,
     displayRadius: displayRadiusFromPhysical(physicalRadius, isStar),
     showTrail: true,
     trailLength: customTrailLength,
+    textureKind: textureKind ?? (isStar ? 'star' : undefined),
   };
 }
 
@@ -866,7 +925,7 @@ export function bodyFromSunOrbit(
     // Tangential velocity for counterclockwise orbit
     velocity: { x: -v * s, y: v * c },
     state: 'dynamic',
-    visual: makeVisual(template.color, template.radius),
+    visual: makeVisual(template.color, template.radius, false, 400, textureKindForTemplate(template)),
   };
 }
 
@@ -900,7 +959,7 @@ export function bodyAroundParent(
       y: parentBody.velocity.y + vRel * c,
     },
     state: 'dynamic',
-    visual: makeVisual(template.color, template.radius, false, 250),
+    visual: makeVisual(template.color, template.radius, false, 250, textureKindForTemplate(template)),
   };
 }
 
@@ -919,7 +978,7 @@ export function makeSunBody(): CelestialBody {
     position: { x: 0, y: 0 },
     velocity: { x: 0, y: 0 },
     state: 'fixed',
-    visual: makeVisual(SUN_TEMPLATE.color, SUN_TEMPLATE.radius, true),
+    visual: makeVisual(SUN_TEMPLATE.color, SUN_TEMPLATE.radius, true, 400, 'star'),
   };
 }
 
@@ -973,6 +1032,7 @@ export function createAsteroidBeltSwarm(count = 45): CelestialBody[] {
         displayRadius: 3,
         showTrail: false,
         trailLength: 60,
+        textureKind: 'rocky',
       },
     });
   }
@@ -1015,6 +1075,7 @@ export function createKuiperBeltSwarm(count = 25): CelestialBody[] {
         displayRadius: 3,
         showTrail: false,
         trailLength: 60,
+        textureKind: 'icy',
       },
     });
   }
@@ -1213,7 +1274,7 @@ export function makeCustomBodyAtOrbit(
     position: { x: r * c, y: r * s },
     velocity: { x: -v * s, y: v * c },
     state: 'dynamic',
-    visual: makeVisual(options?.color ?? '#10b981', radius),
+    visual: makeVisual(options?.color ?? '#10b981', radius, false, 400, 'rocky'),
   };
 }
 

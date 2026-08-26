@@ -883,6 +883,7 @@ interface Camera2D {
 | Feature | Prioridad |
 |---------|-----------|
 | Círculos coloreados por cuerpo | P0 |
+| Texturas fotográficas 2D + iluminación desde el Sol (Canvas2D, cacheadas) | P1 |
 | Pan (drag canvas vacío) | P0 |
 | Zoom (rueda, zoom-to-cursor) | P0 |
 | Trails (ring buffer por cuerpo) | P0 |
