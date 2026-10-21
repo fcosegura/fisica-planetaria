@@ -105,8 +105,15 @@ SimulationDocument → createSimulationRuntime(engineKind)
 - `src/render/` y `src/components/` se ocupan de cámara, canvas e interacción,
   no de implementar reglas físicas.
 - El render Canvas2D dibuja discos con **mapas fotográficos** (NASA/Solar System Scope en
-  `public/textures/planets/`) cacheados por ángulo hacia el Sol + sombreado desde el
-  primario. Es solo visual: no altera masa, radio físico ni integración.
+  `public/textures/planets/`, reducidos a 1024 px al decodificar). Se cachea **un**
+  disco por textura iluminado desde +x y se rota hacia el Sol al dibujarlo
+  (equivalente exacto). Es solo visual: no altera masa, radio físico ni integración.
+- Mientras se reproduce, el store publica `snapshot` a React como máximo cada
+  `UI_SNAPSHOT_INTERVAL_MS` (100 ms); el canvas se dibuja cada frame. Para
+  hit-testing o encuadre de cámara usar `latestSnapshot()`, no `store.snapshot`.
+- `DirectNBodySolver` evalúa cada par una sola vez (3.ª ley de Newton). La
+  detección de colisiones compara distancias al cuadrado; no usar
+  `Math.hypot`/`sqrt` ni asignaciones en bucles O(N²).
 
 ## Reglas de física y datos
 
@@ -124,6 +131,12 @@ SimulationDocument → createSimulationRuntime(engineKind)
   velocidad pedida como garantizada cuando el motor N-body está limitado por
   CPU. En el motor orbital, `effectiveTimeScale` coincide con lo pedido si el
   escenario es compatible (no hay subpasos Leapfrog).
+- Ambos motores avanzan `simulationTimeScale × tiempo real transcurrido`
+  (`FrameClock` en `src/sim/engine/frame-clock.ts`), nunca un 60 fps supuesto.
+  Huecos > 0.1 s se recortan; sin marca de tiempo (tests) se usa `1/targetFps`.
+  El N-body arrastra al frame siguiente el tiempo pendiente menor que
+  `physicsDt` (no redondear hacia arriba a un paso por frame) y descarta el
+  atraso cuando está limitado por CPU.
 - `engineKind` (`nbody` | `orbital`) es propiedad explícita de `SimConfig`.
   Default `nbody`. Nunca auto-cambiar de motor. Un escenario incompatible con
   Orbital debe mostrarse como tal y no avanzar física incorrecta.
@@ -150,6 +163,10 @@ SimulationDocument → createSimulationRuntime(engineKind)
   `bodyAroundParent` colocan en periapsis con velocidad vis-viva. El
   laboratorio es 2D: no se modela la inclinación. Los escenarios de
   validación Sol–Tierra circular/elíptica fuerzan e = 0 a propósito.
+- Las lunas usan μ = G(M_padre + m) para su órbita relativa. Todo escenario o
+  acción del store que añada satélites debe pasar la lista por
+  `applySatelliteRecoil` (solo con los ids nuevos) para que el baricentro
+  planeta–lunas conserve la órbita original del planeta.
 
 ## Testing
 

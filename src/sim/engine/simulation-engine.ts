@@ -20,6 +20,7 @@ import type {
   CollisionEvent,
 } from '../types';
 import type { SimulationRuntime } from './runtime';
+import { FrameClock } from './frame-clock';
 
 function emptyTimeScaleStatus(config: SimConfig): TimeScaleStatus {
   return {
@@ -67,6 +68,9 @@ export class SimulationEngine implements SimulationRuntime {
   private initialMetrics: ConservationSnapshot;
   private lastTimeScale: TimeScaleStatus = emptyTimeScaleStatus(DEFAULT_SIM_CONFIG);
   private lastCollisionEvent: CollisionEvent | null = null;
+  private frameClock = new FrameClock();
+  /** Sim seconds requested by the time scale but not yet integrated (< physicsDt). */
+  private timeDebt = 0;
 
   constructor(options: SimulationEngineOptions) {
     this.config = { ...options.document.config };
@@ -124,6 +128,8 @@ export class SimulationEngine implements SimulationRuntime {
     this.initialMetrics = computeConservationSnapshot(this.state, this.config.gravityConstant ?? G);
     this.lastTimeScale = emptyTimeScaleStatus(this.config);
     this.lastCollisionEvent = null;
+    this.frameClock.reset();
+    this.timeDebt = 0;
   }
 
   setTimeScale(scale: number): void {
@@ -164,42 +170,61 @@ export class SimulationEngine implements SimulationRuntime {
     return this.getSnapshot();
   }
 
+  /** Substeps needed to cover one nominal frame (1 / targetFps) at the requested scale. */
   computeSubstepsNeeded(): number {
     const targetAdvance = this.config.simulationTimeScale / this.config.targetFps;
-    return Math.ceil(targetAdvance / this.config.physicsDt);
+    return Math.floor(targetAdvance / this.config.physicsDt);
   }
 
+  /**
+   * Advance by `timeScale × realElapsed` using whole fixed `physicsDt` steps.
+   * Sim time owed but smaller than one step is carried to the next frame, so
+   * low scales (1×, 10×…) are honoured on average instead of being rounded up
+   * to one full step per frame.
+   */
   runFrame(nowMs?: number): SimSnapshot {
-    const start = nowMs ?? performance.now();
+    const start = nowMs !== undefined ? performance.now() : 0;
     const budget = this.config.frameBudgetMs;
     const maxSteps = this.config.maxSubstepsPerFrame;
-    const needed = this.computeSubstepsNeeded();
+    const dt = this.config.physicsDt;
+    const wallSeconds = this.frameClock.advance(nowMs, this.config.targetFps);
+    const requested = this.config.simulationTimeScale;
+
+    this.timeDebt += requested * wallSeconds;
+    // Tolerance so accumulated round-off does not drop a step that is due.
+    const needed = Math.floor(this.timeDebt / dt + 1e-9);
     let executed = 0;
     this.lastCollisionEvent = null;
 
     while (executed < needed && executed < maxSteps) {
       if (nowMs !== undefined && performance.now() - start >= budget) break;
-      this.integrator.step(this.state, this.solver, this.config.physicsDt);
+      this.integrator.step(this.state, this.solver, dt);
       const didMerge = this.collision.resolve(this.state, this.config.mergeThresholdFactor);
       if (didMerge) {
         this.lastCollisionEvent = this.detectMergeEvent();
         this.solver.computeAccelerations(this.state);
       }
       executed++;
-      this.simTime += this.config.physicsDt;
+      this.simTime += dt;
       this.stepCount += 1;
     }
 
-    this.solver.computeAccelerations(this.state);
+    const isCapped = executed < needed;
+    // Drop the backlog when CPU-limited: catching up later would only stall frames.
+    this.timeDebt = isCapped ? 0 : Math.max(0, this.timeDebt - executed * dt);
 
-    const simAdvance = executed * this.config.physicsDt;
-    const effectiveTimeScale = simAdvance * this.config.targetFps;
-    const isCapped = effectiveTimeScale < this.config.simulationTimeScale * 0.99;
+    let effectiveTimeScale = requested;
+    if (isCapped) {
+      const instant = wallSeconds > 0 ? (executed * dt) / wallSeconds : 0;
+      effectiveTimeScale = this.lastTimeScale.isCapped && this.lastTimeScale.effectiveTimeScale > 0
+        ? this.lastTimeScale.effectiveTimeScale * 0.8 + instant * 0.2
+        : instant;
+    }
 
     this.lastTimeScale = {
-      requestedTimeScale: this.config.simulationTimeScale,
+      requestedTimeScale: requested,
       effectiveTimeScale,
-      physicsDt: this.config.physicsDt,
+      physicsDt: dt,
       substepsRequested: needed,
       substepsExecuted: executed,
       isCapped,

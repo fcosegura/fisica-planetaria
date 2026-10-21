@@ -931,6 +931,12 @@ export function bodyFromSunOrbit(
 
 /**
  * Place a secondary body (moon / satellite) around a parent body in the simulation.
+ *
+ * The relative orbit uses μ = G(M_parent + m): in the N-body run both bodies
+ * accelerate toward each other, so using only M_parent would start the moon
+ * too slowly (Charon: e ≈ 0.11 instead of circular). Call
+ * `applySatelliteRecoil` afterwards so the pair's barycentre keeps the
+ * parent's original orbit instead of drifting.
  */
 export function bodyAroundParent(
   template: PlanetTemplate,
@@ -940,7 +946,7 @@ export function bodyAroundParent(
   const a = template.orbitRadius;
   const r = perihelionRadius(a, template.eccentricity);
   const dir = template.retrograde ? -1 : 1;
-  const vRel = perihelionSpeed(parentBody.mass, a, template.eccentricity) * dir;
+  const vRel = perihelionSpeed(parentBody.mass + template.mass, a, template.eccentricity) * dir;
   const c = Math.cos(phaseRad);
   const s = Math.sin(phaseRad);
 
@@ -961,6 +967,69 @@ export function bodyAroundParent(
     state: 'dynamic',
     visual: makeVisual(template.color, template.radius, false, 250, textureKindForTemplate(template)),
   };
+}
+
+/**
+ * Move satellite systems to barycentric initial conditions. For a parent of
+ * mass M with satellites m_i at relative states rel_i, the parent and every
+ * one of those satellites are shifted by the same vector
+ * −Σ m_i·rel_i / (M + Σ m_i). Each relative orbit is therefore unchanged, and
+ * the system's centre of mass keeps the parent's original position and
+ * velocity, so the parent's heliocentric orbit no longer drifts by the moons'
+ * momentum (Earth–Moon ≈ 12 m/s, Pluto–Charon ≈ 23 m/s).
+ *
+ * Only bodies listed in `satelliteIds` (default: every body whose parent is in
+ * `bodies`) are corrected, so already-balanced satellites are not shifted
+ * twice. Fixed parents are left untouched. Returns new body objects.
+ */
+export function applySatelliteRecoil(
+  bodies: readonly CelestialBody[],
+  satelliteIds?: ReadonlySet<string>,
+): CelestialBody[] {
+  const out = bodies.map((b) => ({
+    ...b,
+    position: { ...b.position },
+    velocity: { ...b.velocity },
+  }));
+  const indexById = new Map(bodies.map((b, i) => [b.id, i]));
+  const systems = new Map<number, { members: number[]; mass: number; mx: number; my: number; mvx: number; mvy: number }>();
+
+  for (let i = 0; i < bodies.length; i++) {
+    const sat = bodies[i]!;
+    if (!sat.parentId || (satelliteIds && !satelliteIds.has(sat.id))) continue;
+    const pi = indexById.get(sat.parentId);
+    if (pi === undefined || pi === i) continue;
+    const parent = bodies[pi]!;
+    if (parent.state === 'fixed' || !(parent.mass > 0) || !(sat.mass > 0)) continue;
+
+    let sys = systems.get(pi);
+    if (!sys) {
+      sys = { members: [], mass: parent.mass, mx: 0, my: 0, mvx: 0, mvy: 0 };
+      systems.set(pi, sys);
+    }
+    sys.members.push(i);
+    sys.mass += sat.mass;
+    sys.mx += sat.mass * (sat.position.x - parent.position.x);
+    sys.my += sat.mass * (sat.position.y - parent.position.y);
+    sys.mvx += sat.mass * (sat.velocity.x - parent.velocity.x);
+    sys.mvy += sat.mass * (sat.velocity.y - parent.velocity.y);
+  }
+
+  for (const [pi, sys] of systems) {
+    const dx = sys.mx / sys.mass;
+    const dy = sys.my / sys.mass;
+    const dvx = sys.mvx / sys.mass;
+    const dvy = sys.mvy / sys.mass;
+    for (const idx of [pi, ...sys.members]) {
+      const target = out[idx]!;
+      target.position.x -= dx;
+      target.position.y -= dy;
+      target.velocity.x -= dvx;
+      target.velocity.y -= dvy;
+    }
+  }
+
+  return out;
 }
 
 /** Backwards-compatible helper for the Earth-Moon pair */

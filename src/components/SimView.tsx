@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSimulationStore } from '@/store/simulation-store';
+import { latestSnapshot, useSimulationStore } from '@/store/simulation-store';
 import { CanvasRenderer } from '@/render/canvas-renderer';
 import { preloadPlanetTextures } from '@/render/body-textures';
 import {
@@ -328,7 +328,6 @@ export function SimCanvas() {
   const tick = useSimulationStore((s) => s.tick);
   const setSelectedId = useSimulationStore((s) => s.setSelectedId);
   const resetCameraView = useSimulationStore((s) => s.resetCameraView);
-  const snapshot = useSimulationStore((s) => s.snapshot);
   const placementMode = useSimulationStore((s) => s.placementMode);
   const addBodyAtPosition = useSimulationStore((s) => s.addBodyAtPosition);
 
@@ -352,6 +351,7 @@ export function SimCanvas() {
     const renderer = new CanvasRenderer(canvas);
     attachRenderer(renderer);
     const store = useSimulationStore.getState();
+    const snapshot = store.snapshot;
     if (snapshot) {
       store.resetCameraView();
       renderer.render(snapshot, {
@@ -396,15 +396,17 @@ export function SimCanvas() {
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const store = useSimulationStore.getState();
-    const hit =
-      store.renderer?.hitTest(
-        store.snapshot!,
-        sx,
-        sy,
-        store.bodyScaleMode,
-        store.relativeSunDisplayPx,
-        store.realSunDisplayPx,
-      ) ?? null;
+    const current = latestSnapshot();
+    const hit = current
+      ? store.renderer?.hitTest(
+          current,
+          sx,
+          sy,
+          store.bodyScaleMode,
+          store.relativeSunDisplayPx,
+          store.realSunDisplayPx,
+        ) ?? null
+      : null;
     if (hit) {
       setSelectedId(hit);
       dragRef.current = { x: sx, y: sy, startX: sx, startY: sy, panning: false, hitId: hit };

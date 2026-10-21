@@ -18,6 +18,7 @@ import {
 } from '../orbit/kepler-2d';
 import { assessOrbitalCompatibility } from '../orbit/orbital-compatibility';
 import type { SimulationRuntime } from './runtime';
+import { FrameClock } from './frame-clock';
 
 function emptyTimeScaleStatus(config: SimConfig): TimeScaleStatus {
   return {
@@ -60,6 +61,7 @@ export class OrbitalEngine implements SimulationRuntime {
   private primaryEpoch = { x: 0, y: 0, vx: 0, vy: 0 };
   private twoBodyBarycenter = false;
   private cmEpoch = { x: 0, y: 0, vx: 0, vy: 0 };
+  private frameClock = new FrameClock();
 
   constructor(options: OrbitalEngineOptions) {
     this.config = { ...options.document.config, engineKind: 'orbital' };
@@ -170,12 +172,14 @@ export class OrbitalEngine implements SimulationRuntime {
     return this.getSnapshot();
   }
 
-  runFrame(_nowMs?: number): SimSnapshot {
+  runFrame(nowMs?: number): SimSnapshot {
     if (!this.compatibility.compatible) {
       return this.freezeIncompatible();
     }
 
-    const delta = this.config.simulationTimeScale / this.config.targetFps;
+    // Kepler evaluation has no step size: advance exactly timeScale × real elapsed.
+    const wallSeconds = this.frameClock.advance(nowMs, this.config.targetFps);
+    const delta = this.config.simulationTimeScale * wallSeconds;
     this.simTime += delta;
     this.stepCount += 1;
     this.evaluate();
@@ -210,6 +214,7 @@ export class OrbitalEngine implements SimulationRuntime {
     this.simTime = initialTime;
     this.epochTime = initialTime;
     this.stepCount = 0;
+    this.frameClock.reset();
     this.orbits = [];
     this.twoBodyBarycenter = false;
 

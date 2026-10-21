@@ -4,7 +4,8 @@ export type { BodyTextureKind };
 
 const DISC_CACHE_SIZE = 256;
 const MIN_TEXTURE_RADIUS_PX = 3;
-const ANGLE_BUCKET = Math.PI / 36; // 5°
+/** Equirectangular maps are downsampled to this width when decoded. */
+const MAX_SOURCE_TEXTURE_WIDTH = 1024;
 
 export interface DrawBodySurfaceOptions {
   /** World position of the primary light source (usually the Sun). */
@@ -211,19 +212,23 @@ export function generatePhotoDiscPixels(
   return data;
 }
 
-function discCacheKey(path: string, lightAngle: number, emissive: boolean): string {
-  const bucket = Math.round(lightAngle / ANGLE_BUCKET);
-  return `${path}|${bucket}|${emissive ? 1 : 0}`;
+function discCacheKey(path: string, emissive: boolean): string {
+  return `${path}|${emissive ? 1 : 0}`;
 }
 
+/**
+ * One cached disc per texture, lit from +x (light angle 0). The disc for any
+ * other light angle θ is exactly this image rotated by θ (texture longitude and
+ * terminator rotate together), so callers rotate at draw time instead of
+ * caching one 256² canvas per 5° bucket (up to 72 per texture).
+ */
 function getPhotoDiscCanvas(
   texture: LoadedTexture,
-  lightAngle: number,
   emissive: boolean,
 ): HTMLCanvasElement | null {
   if (typeof document === 'undefined') return null;
 
-  const key = discCacheKey(texture.path, lightAngle, emissive);
+  const key = discCacheKey(texture.path, emissive);
   const cached = discCache.get(key);
   if (cached) return cached;
 
@@ -233,7 +238,7 @@ function getPhotoDiscCanvas(
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  const pixels = generatePhotoDiscPixels(texture, lightAngle, emissive);
+  const pixels = generatePhotoDiscPixels(texture, 0, emissive);
   ctx.putImageData(new ImageData(pixels, DISC_CACHE_SIZE, DISC_CACHE_SIZE), 0, 0);
   discCache.set(key, canvas);
   return canvas;
@@ -252,15 +257,18 @@ async function loadTextureSource(path: string): Promise<LoadedTexture | null> {
 
     const img = new Image();
     img.onload = () => {
+      // A 256 px disc shows at most ~512 px of longitude; keeping 2048×1024
+      // RGBA maps in memory cost 8 MB each for no visible detail.
+      const scale = Math.min(1, MAX_SOURCE_TEXTURE_WIDTH / img.naturalWidth);
       const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
       const ctx = canvas.getContext('2d');
       if (!ctx) {
         resolve(null);
         return;
       }
-      ctx.drawImage(img, 0, 0);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const loaded: LoadedTexture = {
         path,
@@ -320,8 +328,9 @@ function drawFallbackDisc(
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g;
   } else {
+    // lightAngle is a world angle (y up); canvas y points down.
     const lx = Math.cos(lightAngle);
-    const ly = Math.sin(lightAngle);
+    const ly = -Math.sin(lightAngle);
     const g = ctx.createLinearGradient(
       x - lx * radiusPx,
       y - ly * radiusPx,
@@ -358,24 +367,23 @@ export function drawTexturedBodyDisc(
     return;
   }
 
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(x, y, radiusPx, 0, Math.PI * 2);
-  ctx.clip();
-
   if (texture) {
-    const disc = getPhotoDiscCanvas(texture, lightAngle, emissive);
+    const disc = getPhotoDiscCanvas(texture, emissive);
     if (disc) {
+      // The disc already has a transparent outside, so no clip path is needed.
+      // Canvas y points down: a counter-clockwise world angle is a negative rotate().
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(-lightAngle);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(disc, x - radiusPx, y - radiusPx, radiusPx * 2, radiusPx * 2);
+      ctx.drawImage(disc, -radiusPx, -radiusPx, radiusPx * 2, radiusPx * 2);
       ctx.restore();
       return;
     }
   }
 
   drawFallbackDisc(ctx, body.visual.color, x, y, radiusPx, lightAngle, emissive);
-  ctx.restore();
   if (!texture) void loadTextureSource(path);
 }
 
