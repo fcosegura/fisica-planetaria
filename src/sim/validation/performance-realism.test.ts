@@ -271,3 +271,42 @@ describe('photo disc lighting is rotation-equivariant', () => {
     expect(maxDiff).toBeLessThan(30);
   });
 });
+
+describe('MergeCollisionPolicy sweep-and-prune broad phase', () => {
+  it('finds an overlap separated in x-order by a non-overlapping body', () => {
+    // Sorted by x − r: big (−10), far (4.9), small (9.4). big–small overlap.
+    const big = { ...body('big', 1e24, 0, 0), radius: 10 };
+    const far = { ...body('far', 1e20, 5, 100), radius: 0.1 };
+    const small = { ...body('small', 1e20, 9.5, 0), radius: 0.1 };
+    const state = createPhysicsStateFromBodies([small, far, big]);
+    expect(new MergeCollisionPolicy().resolve(state, 1)).toBe(true);
+    expect(state.count).toBe(2);
+  });
+
+  it('agrees with a brute-force overlap test on random layouts', () => {
+    let seed = 99;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 0xffffffff;
+    };
+    const policy = new MergeCollisionPolicy();
+    for (let trial = 0; trial < 200; trial++) {
+      const bodies = Array.from({ length: 12 }, (_, i) => ({
+        ...body(`r${i}`, 1e20, rand() * 100, rand() * 100),
+        radius: rand() * 6,
+      }));
+      let expected = false;
+      for (let i = 0; i < bodies.length; i++) {
+        for (let j = i + 1; j < bodies.length; j++) {
+          const d = Math.hypot(
+            bodies[i]!.position.x - bodies[j]!.position.x,
+            bodies[i]!.position.y - bodies[j]!.position.y,
+          );
+          if (d < bodies[i]!.radius + bodies[j]!.radius) expected = true;
+        }
+      }
+      const state = createPhysicsStateFromBodies(bodies);
+      expect(policy.resolve(state, 1)).toBe(expected);
+    }
+  });
+});

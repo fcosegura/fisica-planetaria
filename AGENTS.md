@@ -111,9 +111,10 @@ SimulationDocument → createSimulationRuntime(engineKind)
 - Mientras se reproduce, el store publica `snapshot` a React como máximo cada
   `UI_SNAPSHOT_INTERVAL_MS` (100 ms); el canvas se dibuja cada frame. Para
   hit-testing o encuadre de cámara usar `latestSnapshot()`, no `store.snapshot`.
-- `DirectNBodySolver` evalúa cada par una sola vez (3.ª ley de Newton). La
-  detección de colisiones compara distancias al cuadrado; no usar
-  `Math.hypot`/`sqrt` ni asignaciones en bucles O(N²).
+- `DirectNBodySolver` evalúa cada par una sola vez (3.ª ley de Newton).
+  `MergeCollisionPolicy` hace primero un sweep-and-prune exacto en x y solo
+  ejecuta el bucle O(N²) de fusión si hay algún solape. Compara distancias al
+  cuadrado; no usar `Math.hypot`/`sqrt` ni asignaciones en bucles O(N²).
 
 ## Reglas de física y datos
 
