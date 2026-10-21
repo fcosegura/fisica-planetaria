@@ -4,6 +4,13 @@
  *
  * No performance target: the table is the result. Orbital evaluates one epoch;
  * N-body takes one Leapfrog step per physicsDt.
+ *
+ * `devKepler` = |r_probe − r_Kepler| / a against the ideal heliocentric
+ * two-body orbit around the Sun mass. It is an integration error only when the
+ * scenario really is two-body (sun-sedna). In kuiper-belt the giant planets
+ * perturb Sedna, so N-body is *expected* to deviate (~0.17·a after 10 000 y);
+ * halving physicsDt changes Sedna's final position by ~1e-11·a, so that
+ * deviation is physics, not numerical drift.
  */
 import { G } from '../src/sim/constants';
 import { OrbitalEngine } from '../src/sim/engine/orbital-engine';
@@ -50,7 +57,7 @@ function keplerRelError(
 
 function runCase(row: Record<string, string | number>, extra = ''): void {
   console.log(
-    `[bench] ${row.scenario} ${row.engine} ${row.years}y  ${row.wallMs} ms  ${row.yearsPerSec} y/s${extra}  err=${row.relErr_a}`,
+    `[bench] ${row.scenario} ${row.engine} ${row.years}y  ${row.wallMs} ms  ${row.yearsPerSec} y/s${extra}  devKepler=${row.devKepler}`,
   );
 }
 
@@ -86,7 +93,7 @@ for (const scenario of scenarios) {
       wallMs: Number(ms.toFixed(3)),
       yearsPerSec: ms > 0 ? Number((years / (ms / 1000)).toPrecision(4)) : 'inf',
       steps: 1,
-      relErr_a: relErr,
+      devKepler: relErr,
     };
     rows.push(row);
     runCase(row);
@@ -136,14 +143,15 @@ for (const scenario of scenarios) {
       wallMs: Number(ms.toFixed(3)),
       yearsPerSec: ms > 0 ? Number((years / (ms / 1000)).toPrecision(4)) : 'inf',
       steps: executed,
-      relErr_a: relErr,
+      devKepler: relErr,
     };
     rows.push(row);
     runCase(row, `  steps=${executed}`);
   }
 }
 
-console.log('\nN-body vs orbital engine (wall clock, main thread; relErr_a vs two-body Kepler)\n');
+console.log('\nN-body vs orbital engine (wall clock, main thread; devKepler = |Δr|/a vs ideal two-body Kepler)');
+console.log('kuiper-belt N-body includes giant-planet perturbations: its devKepler is physical, not integration error.\n');
 console.table(rows);
 
 if (rows.length !== scenarios.length * YEARS.length * 2) {
