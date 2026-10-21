@@ -17,7 +17,7 @@ export const DEFAULT_SIM_CONFIG = {
   solver: 'direct' as const,
   integrator: 'leapfrog-kdk' as const,
   maxSubstepsPerFrame: 10_000,
-  frameBudgetMs: 8,
+  frameBudgetMs: 12,
   simulationTimeScale: 86400,
   targetFps: 60,
   engineKind: 'nbody' as const,

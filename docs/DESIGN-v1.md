@@ -493,7 +493,7 @@ interface SimConfig {
   solver: 'direct';            // extensible: 'barnes-hut' | 'gpu'
   integrator: 'leapfrog-kdk';
   maxSubstepsPerFrame: number; // safety cap, e.g. 10_000
-  frameBudgetMs: number;       // e.g. 8
+  frameBudgetMs: number;       // e.g. 12
 }
 ```
 
@@ -579,7 +579,7 @@ El renderer **nunca** convierte física a píxeles dentro del solver. Solo la c�
 | `physicsDt` | Paso de integración fijo (s), **definido por preset de escenario** | Ver tabla G.5 |
 | `simulationTimeScale` | Factor sim-time / real-time | 86400 → 1 día sim / 1 s real |
 | `simTime` | Tiempo simulado acumulado (s) | crece con cada substep |
-| `frameBudgetMs` | Máximo ms de CPU para física por frame | 8 |
+| `frameBudgetMs` | Máximo ms de CPU para física por frame | 12 (deja ~4 ms para render a 60 Hz) |
 
 **Regla fundamental:** `simulationTimeScale` **nunca** modifica `physicsDt`.
 

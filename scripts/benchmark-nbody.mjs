@@ -148,13 +148,13 @@ for (const r of results) {
 // ---------------------------------------------------------------------------
 
 const YEAR_S = 31_557_600;
-const FRAME_BUDGET_MS = 8;
+const FRAME_BUDGET_MS = 12; // DEFAULT_SIM_CONFIG.frameBudgetMs
 const TARGET_FPS = 60;
 const EFFECTIVE_NS = [50, 100];
 const PHYSICS_DTS = [120, 7200];
 
-console.log('\nEffective time scale (frameBudgetMs=8, targetFps=60):');
-console.log('Simulated years/s ≈ (steps in 8ms) × physicsDt × 60 / YEAR_S\n');
+console.log(`\nEffective time scale (frameBudgetMs=${FRAME_BUDGET_MS}, targetFps=60):`);
+console.log(`Simulated years/s ≈ (steps in ${FRAME_BUDGET_MS}ms) × physicsDt × 60 / YEAR_S\n`);
 
 const effectiveRows = [];
 for (const n of EFFECTIVE_NS) {
@@ -168,7 +168,7 @@ for (const n of EFFECTIVE_NS) {
       n,
       physicsDt: dt,
       medianMsPerStep: +medianMs.toFixed(4),
-      stepsIn8ms: stepsInBudget,
+      stepsInBudget,
       effectiveYearsPerSec: +yearsPerWallSecond.toFixed(3),
       effectiveTimeScale: +effectiveTimeScale.toFixed(0),
     });
