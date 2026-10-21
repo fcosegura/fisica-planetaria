@@ -585,42 +585,51 @@ El renderer **nunca** convierte física a píxeles dentro del solver. Solo la c�
 
 ### G.2 Cálculo de subpasos por frame
 
+El avance se mide con el **tiempo real transcurrido** entre frames (`FrameClock`,
+`src/sim/engine/frame-clock.ts`), no con un 60 fps supuesto: un monitor de
+120/144 Hz o un frame perdido no cambian la velocidad de la simulación. Los
+huecos largos (pestaña en segundo plano, reanudar tras pausa) se recortan a
+`MAX_FRAME_WALL_SECONDS = 0.1` s. Sin marca de tiempo (tests, benchmarks) se usa
+`1 / targetFps`, lo que mantiene el determinismo.
+
 ```
-targetSimAdvance = simulationTimeScale × (1/60)   // sim-seconds per frame at 60fps
-substepsNeeded = ceil(targetSimAdvance / physicsDt)
-substepsActual = min(substepsNeeded, maxSubstepsPerFrame)
+wallSeconds   = clamp(now − lastFrame, 0, 0.1)      // 1/targetFps si headless
+timeDebt     += simulationTimeScale × wallSeconds
+substeps      = floor(timeDebt / physicsDt)
+executed      = min(substeps, maxSubstepsPerFrame, lo que quepa en frameBudgetMs)
+timeDebt     -= executed × physicsDt                 // el resto (< dt) pasa al siguiente frame
 ```
 
-Si `substepsNeeded > maxSubstepsPerFrame` **o** el presupuesto de 8 ms se agota antes, la sim avanza menos de lo pedido. El motor calcula y expone `effectiveTimeScale` (ver G.7).
+El tiempo pendiente menor que un paso se arrastra al frame siguiente. Así 1×,
+10× o 100× se respetan en promedio; antes se redondeaba hacia arriba a un
+`physicsDt` completo por frame (con `dt = 120` s, "1×" corría a 7200×).
+
+Si `executed < substeps`, la sim avanza menos de lo pedido: se marca `isCapped`
+y se descarta el atraso (recuperarlo después solo bloquearía frames). El motor
+expone `effectiveTimeScale` (ver G.7).
 
 ### G.3 Presupuesto adaptativo (anti-bloqueo)
 
 ```typescript
-function runFrame(engine: SimulationEngine, budgetMs: number): TimeScaleStatus {
-  const substepsNeeded = computeSubstepsNeeded(config);
-  const start = performance.now();
-  let stepsExecuted = 0;
-
-  while (stepsExecuted < substepsNeeded && (performance.now() - start) < budgetMs) {
-    engine.step();
-    stepsExecuted++;
+runFrame(nowMs) {
+  const wallSeconds = frameClock.advance(nowMs, targetFps);
+  timeDebt += requested * wallSeconds;
+  const needed = Math.floor(timeDebt / dt);
+  let executed = 0;
+  while (executed < needed && executed < maxSteps && performance.now() - start < budgetMs) {
+    step(); executed++;
   }
-
-  const simAdvance = stepsExecuted * config.physicsDt;
-  const effectiveTimeScale = simAdvance * 60; // asumiendo 60 fps
-
-  return {
-    requestedTimeScale: config.simulationTimeScale,
-    effectiveTimeScale,
-    substepsRequested: substepsNeeded,
-    substepsExecuted: stepsExecuted,
-    isCapped: effectiveTimeScale < config.simulationTimeScale * 0.99,
-    capReason: stepsExecuted < substepsNeeded ? 'budget' : null,
-  };
+  const isCapped = executed < needed;
+  timeDebt = isCapped ? 0 : timeDebt - executed * dt;
+  // Sin límite: effective = requested (el acumulador lo garantiza en promedio).
+  // Con límite: effective = executed·dt / wallSeconds, suavizado (EMA 0.2).
 }
 ```
 
 Esto garantiza que escala temporal enorme no congela el navegador: avanza menos pasos por frame, reduciendo el time scale efectivo pero manteniendo estabilidad numérica. **El usuario debe ver la diferencia entre lo pedido y lo conseguido.**
+
+El motor orbital usa el mismo `FrameClock`: avanza exactamente
+`simulationTimeScale × wallSeconds` porque no tiene tamaño de paso.
 
 ### G.4 Presets de escala temporal (UI)
 
@@ -718,7 +727,7 @@ efectivo del preset. No se muta durante `runFrame`.
 **Datos mostrados:**
 
 - `requestedTimeScale` — label del preset seleccionado
-- `effectiveTimeScale` — calculado cada frame: `substepsExecuted × physicsDt × fps`
+- `effectiveTimeScale` — igual a lo pedido si no hay límite; si lo hay, `substepsExecuted × physicsDt / tiempoRealDelFrame` suavizado
 - `substepsExecuted / substepsRequested` — barra de progreso o fracción
 - Tooltip: "El simulador no alcanza la velocidad pedida. Reduce la escala, añade Worker (fase 2), o reduce el número de cuerpos."
 

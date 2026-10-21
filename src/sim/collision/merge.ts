@@ -6,30 +6,48 @@ import { displayRadiusFromPhysical } from '../visual/display-radius';
 export class MergeCollisionPolicy implements CollisionPolicy {
   readonly name = 'merge';
 
+  /** Physical radii copied once per call so the pair loop avoids `meta` lookups. */
+  private radii = new Float64Array(0);
+  /** Body indices sorted by the left edge of their x interval; kept between steps. */
+  private order = new Int32Array(0);
+  private orderCount = -1;
+  private lo = new Float64Array(0);
+  private hi = new Float64Array(0);
+
   resolve(state: PhysicsState, mergeThresholdFactor: number): boolean {
-    const merged = new Set<number>();
+    const count = state.count;
+    if (this.radii.length < count) this.radii = new Float64Array(count);
+    const radii = this.radii;
+    for (let i = 0; i < count; i++) radii[i] = state.meta[i]!.radius;
 
-    for (let i = 0; i < state.count; i++) {
-      if (merged.has(i) || (state.flags[i]! & FLAG_ACTIVE) === 0) continue;
+    // Collisions are rare: an exact sweep-and-prune check avoids the O(N²)
+    // pass on almost every step. The pass below is unchanged when it runs.
+    if (!this.anyOverlap(state, mergeThresholdFactor)) return false;
 
-      for (let j = i + 1; j < state.count; j++) {
-        if (merged.has(j) || (state.flags[j]! & FLAG_ACTIVE) === 0) continue;
+    const { position, flags } = state;
+    let mergedCount = 0;
 
-        const dx = state.position[j * 2]! - state.position[i * 2]!;
-        const dy = state.position[j * 2 + 1]! - state.position[i * 2 + 1]!;
-        const dist = Math.hypot(dx, dy);
-        const threshold =
-          (state.meta[i]!.radius + state.meta[j]!.radius) * mergeThresholdFactor;
+    for (let i = 0; i < count; i++) {
+      if ((flags[i]! & FLAG_ACTIVE) === 0) continue;
 
-        if (dist >= threshold || threshold <= 0) continue;
+      for (let j = i + 1; j < count; j++) {
+        if ((flags[j]! & FLAG_ACTIVE) === 0) continue;
+
+        const threshold = (radii[i]! + radii[j]!) * mergeThresholdFactor;
+        if (!(threshold > 0)) continue;
+        const dx = position[j * 2]! - position[i * 2]!;
+        const dy = position[j * 2 + 1]! - position[i * 2 + 1]!;
+        // Squared comparison: no sqrt/hypot in the O(N²) hot path. NaN never merges.
+        if (!(dx * dx + dy * dy < threshold * threshold)) continue;
 
         this.mergePair(state, i, j);
-        merged.add(j);
-        state.flags[j] = 0;
+        radii[i] = state.meta[i]!.radius;
+        mergedCount++;
+        flags[j] = 0;
       }
     }
 
-    if (merged.size === 0) return false;
+    if (mergedCount === 0) return false;
 
     // Compact removed bodies
     let write = 0;
@@ -57,6 +75,66 @@ export class MergeCollisionPolicy implements CollisionPolicy {
     }
 
     return true;
+  }
+
+  /**
+   * True if some active pair satisfies the merge test. Bodies are sorted by
+   * x − r·f (insertion sort: the order barely changes between steps); a pair
+   * can only overlap if their x intervals [x − r·f, x + r·f] overlap.
+   */
+  private anyOverlap(state: PhysicsState, factor: number): boolean {
+    const count = state.count;
+    if (!(factor > 0) || count < 2) return false;
+    if (this.lo.length < count) {
+      this.lo = new Float64Array(count);
+      this.hi = new Float64Array(count);
+      this.order = new Int32Array(count);
+      this.orderCount = -1;
+    }
+    const { position, flags } = state;
+    const { radii, lo, hi, order } = this;
+
+    for (let i = 0; i < count; i++) {
+      const x = position[i * 2]!;
+      const y = position[i * 2 + 1]!;
+      const reach = radii[i]! * factor;
+      if ((flags[i]! & FLAG_ACTIVE) === 0 || !Number.isFinite(x) || !Number.isFinite(y) || !(reach >= 0)) {
+        lo[i] = Infinity;
+        hi[i] = -Infinity;
+      } else {
+        lo[i] = x - reach;
+        hi[i] = x + reach;
+      }
+    }
+
+    if (this.orderCount !== count) {
+      for (let i = 0; i < count; i++) order[i] = i;
+      this.orderCount = count;
+    }
+    for (let a = 1; a < count; a++) {
+      const idx = order[a]!;
+      const key = lo[idx]!;
+      let b = a - 1;
+      while (b >= 0 && lo[order[b]!]! > key) {
+        order[b + 1] = order[b]!;
+        b--;
+      }
+      order[b + 1] = idx;
+    }
+
+    for (let a = 0; a < count; a++) {
+      const i = order[a]!;
+      const hiI = hi[i]!;
+      for (let b = a + 1; b < count; b++) {
+        const j = order[b]!;
+        if (!(lo[j]! < hiI)) break;
+        const threshold = (radii[i]! + radii[j]!) * factor;
+        const dx = position[j * 2]! - position[i * 2]!;
+        const dy = position[j * 2 + 1]! - position[i * 2 + 1]!;
+        if (dx * dx + dy * dy < threshold * threshold) return true;
+      }
+    }
+    return false;
   }
 
   private mergePair(state: PhysicsState, i: number, j: number): void {

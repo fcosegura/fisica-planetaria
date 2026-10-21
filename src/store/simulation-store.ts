@@ -7,7 +7,7 @@ import type { CelestialBody, EngineKind, SimSnapshot, ScenarioPreset, Vec2 } fro
 import { CanvasRenderer, type BodyScaleMode } from '@/render/canvas-renderer';
 import { DEFAULT_RELATIVE_SUN_DISPLAY_PX, DEFAULT_REAL_SUN_DISPLAY_PX, MAX_REAL_SUN_DISPLAY_PX, MIN_REAL_SUN_DISPLAY_PX } from '@/sim/visual/display-radius';
 import { makeBodyAtPosition } from '@/sim/orbit/compute-orbit';
-import { makeVisual, nextCatalogBodyId } from '@/sim/catalog/solar-system';
+import { applySatelliteRecoil, makeVisual, nextCatalogBodyId } from '@/sim/catalog/solar-system';
 import { resolvePhysicsDt } from '@/sim/config/physics-dt';
 
 export interface SimulationStore {
@@ -61,6 +61,21 @@ function initEngine(scenario: ScenarioPreset = solarSystem): SimulationRuntime {
 
 const initialEngine = initEngine();
 
+/**
+ * While playing, React panels receive a new snapshot at most this often. The
+ * canvas still renders every frame from the engine; publishing 60 snapshots/s
+ * to the store re-rendered the whole toolbar and catalog on every frame.
+ */
+export const UI_SNAPSHOT_INTERVAL_MS = 100;
+let lastSnapshotPublishMs = -Infinity;
+/** Snapshot of the latest frame or store update (fresher than the throttled `snapshot`). */
+let liveSnapshot: SimSnapshot | null = null;
+
+/** Freshest simulation state for camera framing and hit-testing. */
+export function latestSnapshot(): SimSnapshot | null {
+  return liveSnapshot;
+}
+
 function getSafePhysicsDt(bodies: CelestialBody[], currentDt: number): number {
   return resolvePhysicsDt(bodies, currentDt);
 }
@@ -101,7 +116,11 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     get().resetCameraView();
   },
 
-  setPlaying: (playing) => set({ playing }),
+  setPlaying: (playing) => {
+    // Publish the live state on pause: the store copy may lag by one UI interval.
+    const { engine } = get();
+    set(playing ? { playing } : { playing, snapshot: engine?.getSnapshot() ?? null });
+  },
 
   stepForward: () => {
     const { engine } = get();
@@ -220,7 +239,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   addBody: (body) => {
     const { engine } = get();
     if (!engine) return;
-    const bodies = [...engine.getBodies(), body];
+    const bodies = applySatelliteRecoil([...engine.getBodies(), body], new Set([body.id]));
     const config = engine.getConfig();
     const safeDt = getSafePhysicsDt(bodies, config.physicsDt);
     const doc = createDocument('custom', bodies, { ...config, physicsDt: safeDt });
@@ -231,7 +250,11 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   addBodies: (newBodies) => {
     const { engine } = get();
     if (!engine) return;
-    const bodies = [...engine.getBodies(), ...newBodies];
+    // New moons share momentum with their (possibly already running) parent.
+    const bodies = applySatelliteRecoil(
+      [...engine.getBodies(), ...newBodies],
+      new Set(newBodies.map((b) => b.id)),
+    );
     const config = engine.getConfig();
     const safeDt = getSafePhysicsDt(bodies, config.physicsDt);
     const doc = createDocument('custom', bodies, { ...config, physicsDt: safeDt });
@@ -278,6 +301,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     if (!engine || !renderer) return;
 
     const next = playing ? engine.runFrame(nowMs) : snapshot ?? engine.getSnapshot();
+    liveSnapshot = next;
     renderer.render(next, {
       selectedId,
       followId,
@@ -286,11 +310,14 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       relativeSunDisplayPx,
       realSunDisplayPx,
     });
+    if (playing && nowMs - lastSnapshotPublishMs < UI_SNAPSHOT_INTERVAL_MS) return;
+    lastSnapshotPublishMs = nowMs;
     set({ snapshot: next });
   },
 
   fitCamera: () => {
-    const { renderer, snapshot, bodyScaleMode, realSunDisplayPx, relativeSunDisplayPx } = get();
+    const { renderer, bodyScaleMode, realSunDisplayPx, relativeSunDisplayPx } = get();
+    const snapshot = latestSnapshot();
     if (!renderer || !snapshot) return;
     renderer.fitBodies(snapshot.bodies, {
       mode: bodyScaleMode,
@@ -300,7 +327,8 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   },
 
   resetCameraView: () => {
-    const { renderer, snapshot, bodyScaleMode, realSunDisplayPx, relativeSunDisplayPx } = get();
+    const { renderer, bodyScaleMode, realSunDisplayPx, relativeSunDisplayPx } = get();
+    const snapshot = latestSnapshot();
     if (!renderer || !snapshot) return;
     const opts = { mode: bodyScaleMode, realSunDisplayPx, relativeSunDisplayPx };
     if (bodyScaleMode === 'real') {
@@ -317,3 +345,8 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     renderer.zoomAt(factor, width / 2, height / 2);
   },
 }));
+
+liveSnapshot = useSimulationStore.getState().snapshot;
+useSimulationStore.subscribe((state, prev) => {
+  if (state.snapshot !== prev.snapshot) liveSnapshot = state.snapshot;
+});

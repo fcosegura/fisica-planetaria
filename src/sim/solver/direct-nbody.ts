@@ -1,9 +1,18 @@
-import { G } from '../constants';
+import { FLAG_ACTIVE, FLAG_FIXED, G } from '../constants';
 import type { PhysicsState } from '../state/physics-state';
 import type { GravitySolver } from './gravity-solver';
 
+/**
+ * Direct O(N²) pairwise gravity. Each pair is evaluated once and applied to
+ * both bodies (Newton's third law), halving the work of the naive i/j loop.
+ */
 export class DirectNBodySolver implements GravitySolver {
   readonly name = 'direct-nbody';
+
+  /** Indices of active bodies with finite positions (reused between calls). */
+  private active = new Int32Array(0);
+  /** G·m per body; 0 when the mass is not a finite positive number. */
+  private mu = new Float64Array(0);
 
   constructor(
     private readonly gravityConstant: number = G,
@@ -17,34 +26,58 @@ export class DirectNBodySolver implements GravitySolver {
 
     acceleration.fill(0);
 
-    for (let i = 0; i < count; i++) {
-      if ((flags[i] & 2) === 0) continue;
+    if (this.active.length < count) {
+      this.active = new Int32Array(count);
+      this.mu = new Float64Array(count);
+    }
+    const active = this.active;
+    const mu = this.mu;
 
+    let n = 0;
+    for (let i = 0; i < count; i++) {
+      if ((flags[i]! & FLAG_ACTIVE) === 0) continue;
+      if (!Number.isFinite(position[i * 2]!) || !Number.isFinite(position[i * 2 + 1]!)) continue;
+      const m = mass[i]!;
+      mu[i] = Number.isFinite(m) && m > 0 ? Gc * m : 0;
+      active[n++] = i;
+    }
+
+    for (let a = 0; a < n; a++) {
+      const i = active[a]!;
+      const xi = position[i * 2]!;
+      const yi = position[i * 2 + 1]!;
+      const mui = mu[i]!;
       let ax = 0;
       let ay = 0;
-      const xi = position[i * 2];
-      const yi = position[i * 2 + 1];
-      if (!Number.isFinite(xi) || !Number.isFinite(yi)) continue;
 
-      for (let j = 0; j < count; j++) {
-        if (i === j || (flags[j] & 2) === 0) continue;
-        const mj = mass[j];
-        if (!Number.isFinite(mj) || mj <= 0) continue;
-
-        const dx = position[j * 2] - xi;
-        const dy = position[j * 2 + 1] - yi;
+      for (let b = a + 1; b < n; b++) {
+        const j = active[b]!;
+        const dx = position[j * 2]! - xi;
+        const dy = position[j * 2 + 1]! - yi;
         const r2 = dx * dx + dy * dy + eps2;
-        if (!(r2 > 0) || !Number.isFinite(r2)) continue;
+        if (!(r2 > 0)) continue;
         const invR3 = 1 / (r2 * Math.sqrt(r2));
-        const mu = Gc * mj;
-        ax += mu * dx * invR3;
-        ay += mu * dy * invR3;
+        const sj = mu[j]! * invR3;
+        const si = mui * invR3;
+        ax += sj * dx;
+        ay += sj * dy;
+        acceleration[j * 2] -= si * dx;
+        acceleration[j * 2 + 1] -= si * dy;
       }
 
-      if ((flags[i] & 1) === 0) {
-        acceleration[i * 2] = Number.isFinite(ax) ? ax : 0;
-        acceleration[i * 2 + 1] = Number.isFinite(ay) ? ay : 0;
+      acceleration[i * 2] += ax;
+      acceleration[i * 2 + 1] += ay;
+    }
+
+    for (let a = 0; a < n; a++) {
+      const i = active[a]!;
+      if ((flags[i]! & FLAG_FIXED) !== 0) {
+        acceleration[i * 2] = 0;
+        acceleration[i * 2 + 1] = 0;
+        continue;
       }
+      if (!Number.isFinite(acceleration[i * 2]!)) acceleration[i * 2] = 0;
+      if (!Number.isFinite(acceleration[i * 2 + 1]!)) acceleration[i * 2 + 1] = 0;
     }
   }
 }

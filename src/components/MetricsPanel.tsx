@@ -36,6 +36,8 @@ export function MetricsPanel() {
 
   const d = active.diagnostics;
   const i = d.initial;
+  // A fixed body (e.g. the Sun) absorbs momentum without moving: |P| is not conserved.
+  const hasFixedBody = active.bodies.some((b) => b.state === 'fixed');
 
   return (
     <div className="metrics-panel">
@@ -82,7 +84,9 @@ export function MetricsPanel() {
             <td>Momento |P|</td>
             <td>{fmt(Math.hypot(d.linearMomentum.x, d.linearMomentum.y))}</td>
             <td>{fmt(Math.hypot(i.linearMomentum.x, i.linearMomentum.y))}</td>
-            <td>{d.relativeMomentumError.toExponential(2)}</td>
+            <td title={hasFixedBody ? 'Con un cuerpo fijo el momento lineal no se conserva' : undefined}>
+              {hasFixedBody ? 'n/a (fijo)' : d.relativeMomentumError.toExponential(2)}
+            </td>
           </tr>
           <tr>
             <td>Momento angular L</td>

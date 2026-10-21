@@ -2,6 +2,7 @@ import { AU, G, M_EARTH, M_SUN } from '../constants';
 import type { CelestialBody, ScenarioPreset } from '../types';
 import { createDocument } from '../document/simulation-document';
 import {
+  applySatelliteRecoil,
   bodyFromSunOrbit,
   bodyMoonAroundEarth,
   createAsteroidBeltSwarm,
@@ -69,7 +70,7 @@ export const earthMoon: ScenarioPreset = {
     const sun = makeSunBody();
     const earth = bodyFromSunOrbit(SOLAR_SYSTEM_CATALOG.find((p) => p.id === 'earth')!);
     const moon = bodyMoonAroundEarth(earth);
-    return [sun, earth, moon];
+    return applySatelliteRecoil([sun, earth, moon]);
   })(),
 };
 
@@ -86,15 +87,17 @@ export const solarSystemFull: ScenarioPreset = {
   name: '🌟 Sistema solar completo (todo lo conocido)',
   description: 'Sol, 8 planetas, lunas principales, planetas enanos, asteroides, KBOs, cometas y cinturones',
   config: { physicsDt: 120, simulationTimeScale: 2_592_000 },
-  bodies: createEverythingKnownSolarSystem({
-    includeMoons: true,
-    includeDwarfPlanets: true,
-    includeAsteroids: true,
-    includeAsteroidSwarm: true,
-    includeKBOs: true,
-    includeKuiperSwarm: true,
-    includeComets: true,
-  }),
+  bodies: applySatelliteRecoil(
+    createEverythingKnownSolarSystem({
+      includeMoons: true,
+      includeDwarfPlanets: true,
+      includeAsteroids: true,
+      includeAsteroidSwarm: true,
+      includeKBOs: true,
+      includeKuiperSwarm: true,
+      includeComets: true,
+    }),
+  ),
 };
 
 export const solarSystemWithMoons: ScenarioPreset = {
@@ -132,7 +135,7 @@ export const solarSystemWithMoons: ScenarioPreset = {
       });
     }
 
-    return bodies;
+    return applySatelliteRecoil(bodies);
   })(),
 };
 
