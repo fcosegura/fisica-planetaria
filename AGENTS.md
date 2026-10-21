@@ -106,8 +106,10 @@ SimulationDocument → createSimulationRuntime(engineKind)
   no de implementar reglas físicas.
 - El render Canvas2D dibuja discos con **mapas fotográficos** (NASA/Solar System Scope en
   `public/textures/planets/`, reducidos a 1024 px al decodificar). Se cachea **un**
-  disco por textura iluminado desde +x y se rota hacia el Sol al dibujarlo
-  (equivalente exacto). Es solo visual: no altera masa, radio físico ni integración.
+  disco sin iluminar por textura (proyección ecuatorial, norte arriba, nunca se
+  rota) y **una** máscara de sombra iluminada desde +x que se rota hacia el Sol
+  y se multiplica sobre el disco (la sombra solo depende de n·l, así que rotarla
+  es exacto; rotar el disco texturizado giraría los polos). Es solo visual: no altera masa, radio físico ni integración.
 - Mientras se reproduce, el store publica `snapshot` a React como máximo cada
   `UI_SNAPSHOT_INTERVAL_MS` (100 ms); el canvas se dibuja cada frame. Para
   hit-testing o encuadre de cámara usar `latestSnapshot()`, no `store.snapshot`.
@@ -115,6 +117,19 @@ SimulationDocument → createSimulationRuntime(engineKind)
   `MergeCollisionPolicy` hace primero un sweep-and-prune exacto en x y solo
   ejecuta el bucle O(N²) de fusión si hay algún solape. Compara distancias al
   cuadrado; no usar `Math.hypot`/`sqrt` ni asignaciones en bucles O(N²).
+- Efectos visuales 2D en `src/render/` (entrada `body-effects.ts`; módulos
+  `planet-lighting.ts`, `planet-atmosphere.ts`, `ring-system.ts`,
+  `gas-giant-bands.ts`, `solar-effects.ts`, `starfield.ts`, perfiles en
+  `body-visual-profiles.ts`). Pipeline: textura → iluminación/terminador →
+  atmósfera/scattering aproximado → anillos procedurales
+  de frente (círculos en el plano orbital; la vista es 2D cenital, no hay
+  inclinación 3D) → corona solar. Las bandas de gigantes salen del mapa
+  fotográfico; no se superponen franjas horizontales extra. Perfiles
+  declarativos por cuerpo (no
+  ramas `if (name === 'Saturn')` en el renderer). El reloj visual
+  (`visual-clock.ts`) anima haze/corona/bandas con tiempo de render; se
+  congela si la simulación está en pausa y se anula con
+  `prefers-reduced-motion`. Solo render; no cambia física ni documentos.
 
 ## Reglas de física y datos
 

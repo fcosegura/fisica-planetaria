@@ -309,6 +309,8 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       bodyScaleMode,
       relativeSunDisplayPx,
       realSunDisplayPx,
+      playing,
+      visualNowMs: nowMs,
     });
     if (playing && nowMs - lastSnapshotPublishMs < UI_SNAPSHOT_INTERVAL_MS) return;
     lastSnapshotPublishMs = nowMs;

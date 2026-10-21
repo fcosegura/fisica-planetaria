@@ -24,7 +24,11 @@ import {
   sunEarthCircular,
   sunSedna,
 } from '../scenarios';
-import { generatePhotoDiscPixels } from '../../render/body-textures';
+import {
+  generatePhotoDiscPixels,
+  generateShadeMaskPixels,
+  generateSurfaceDiscPixels,
+} from '../../render/body-textures';
 import type { CelestialBody, ScenarioPreset, SimConfig } from '../types';
 
 function docWith(scenario: ScenarioPreset, config: Partial<SimConfig>) {
@@ -225,8 +229,8 @@ describe('satellite initial conditions', () => {
   });
 });
 
-describe('photo disc lighting is rotation-equivariant', () => {
-  it('disc at light angle θ equals the θ = 0 disc rotated by θ', () => {
+describe('photo disc lighting: fixed north-up surface × rotated shade mask', () => {
+  it('lit disc at light angle θ equals the unrotated surface times the θ = 0 mask rotated by θ', () => {
     const width = 128;
     const height = 64;
     const pixels = new Uint8ClampedArray(width * height * 4);
@@ -243,7 +247,9 @@ describe('photo disc lighting is rotation-equivariant', () => {
     const size = 64;
     const theta = 1.1;
     const lit = generatePhotoDiscPixels(tex, theta, false, size);
-    const base = generatePhotoDiscPixels(tex, 0, false, size);
+    // The texture is never rotated: north stays up whatever the light angle.
+    const surface = generateSurfaceDiscPixels(tex, false, size);
+    const mask = generateShadeMaskPixels(size, 0);
     const R = size / 2;
 
     let compared = 0;
@@ -253,7 +259,7 @@ describe('photo disc lighting is rotation-equivariant', () => {
         const dx = x - R + 0.5;
         const dy = y - R + 0.5;
         if (dx * dx + dy * dy > (R - 3) ** 2) continue;
-        // Math coords (y up): rotate the normal by −θ to find the source pixel.
+        // Math coords (y up): rotate the normal by −θ to find the mask pixel.
         const u = dx;
         const v = -dy;
         const su = u * Math.cos(theta) + v * Math.sin(theta);
@@ -262,13 +268,52 @@ describe('photo disc lighting is rotation-equivariant', () => {
         const sy = Math.floor(-sv + R);
         const a = (y * size + x) * 4;
         const b = (sy * size + sx) * 4;
-        maxDiff = Math.max(maxDiff, Math.abs(lit[a]! - base[b]!), Math.abs(lit[a + 1]! - base[b + 1]!));
+        const shade = mask[b]! / 255;
+        maxDiff = Math.max(
+          maxDiff,
+          Math.abs(lit[a]! - surface[a]! * shade),
+          Math.abs(lit[a + 1]! - surface[a + 1]! * shade),
+        );
         compared++;
       }
     }
     expect(compared).toBeGreaterThan(100);
-    // Only pixel-grid resampling differs.
+    // Only pixel-grid resampling of the mask differs.
     expect(maxDiff).toBeLessThan(30);
+  });
+
+  it('surface disc keeps north up, unlike rotating the whole lit disc', () => {
+    // Bright northern hemisphere, dark southern one.
+    const width = 64;
+    const height = 32;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        const v = y < height / 2 ? 240 : 20;
+        pixels[idx] = v;
+        pixels[idx + 1] = v;
+        pixels[idx + 2] = v;
+        pixels[idx + 3] = 255;
+      }
+    }
+    const size = 64;
+    const surface = generateSurfaceDiscPixels({ path: 'hemis', width, height, pixels }, false, size);
+    const top = ((size / 4) * size + size / 2) * 4;
+    const bottom = (((3 * size) / 4) * size + size / 2) * 4;
+    expect(surface[top]!).toBeGreaterThan(200);
+    expect(surface[bottom]!).toBeLessThan(60);
+  });
+
+  it('shade mask margin keeps the limb shade instead of fading out', () => {
+    const size = 64;
+    const margin = 4;
+    const mask = generateShadeMaskPixels(size, margin);
+    const y = size / 2;
+    const limb = (y * size + (size - margin - 1)) * 4;
+    const ring = (y * size + (size - 2)) * 4;
+    expect(mask[ring + 3]).toBe(255);
+    expect(Math.abs(mask[ring]! - mask[limb]!)).toBeLessThan(25);
   });
 });
 

@@ -12,6 +12,7 @@ Simulador interactivo 2D de física planetaria/orbital para navegador.
 - Métricas de conservación (energía, momento, momento angular)
 - Canvas 2D: pan, zoom, trails, selección, follow camera; los trails de lunas se muestran relativos a su planeta padre
 - Discos con **mapas fotográficos** (`public/textures/planets/`) e iluminación desde el Sol; fallback a color si aún no cargaron
+- Efectos visuales vivos (solo Canvas2D): pipeline de iluminación y atmósfera, anillos procedurales con oclusión/sombra, bandas de gigantes, corona/ondas solares y fondo estelar. La animación visual se congela en pausa y respeta `prefers-reduced-motion`.
 - Escala de cuerpos: modo **Relativo** (todos visibles, mínimo legible) o modo **Real** (una escala física única: tamaños y distancias proporcionales al Sol; slider del Sol 12 px–1M px, default 1000 px)
 - Colisiones: fusionar o atravesar (solo motor N-body; las fusiones muestran una onda y etiqueta de impacto)
 - Solver N-body intercambiable (`DirectNBodySolver` + stub `BarnesHutSolver`) + `OrbitalEngine` Kepler

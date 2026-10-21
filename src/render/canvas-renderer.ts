@@ -10,7 +10,15 @@ import {
 } from '@/sim/visual/display-radius';
 import { Camera2D } from './camera2d';
 import { TrailBuffer } from './trails';
-import { drawTexturedBodyDisc, resolveBodyTextureKind } from './body-textures';
+import { resolveBodyTextureKind } from './body-textures';
+import {
+  drawBodyVisualPipeline,
+  drawStarfield,
+  effectiveBodyHitRadius,
+  isStarBody,
+  resolveRingProfile,
+} from './body-effects';
+import { VisualClock, prefersReducedMotion } from './visual-clock';
 
 export type BodyScaleMode = 'relative' | 'real';
 
@@ -23,6 +31,12 @@ export interface RenderOptions {
   realSunDisplayPx?: number;
   /** Screen radius (px) of the Sun / scale reference in relative mode. */
   relativeSunDisplayPx?: number;
+  /**
+   * When false, corona/haze/band motion freezes (paused simulation).
+   * Visual time never touches physicsDt / simulationTime.
+   */
+  playing?: boolean;
+  visualNowMs?: number;
 }
 
 export class CanvasRenderer {
@@ -37,6 +51,7 @@ export class CanvasRenderer {
   private realSunDisplayPx = DEFAULT_REAL_SUN_DISPLAY_PX;
   /** px/m at zoom = 1 in real mode; 0 in relative mode. */
   private physicalPxPerMeter = 0;
+  private visualClock = new VisualClock();
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -144,9 +159,19 @@ export class CanvasRenderer {
     }
 
     const sunWorldPosition = this.findSunWorldPosition(snapshot.bodies);
+    const visualNowMs = options.visualNowMs ?? (typeof performance !== 'undefined' ? performance.now() : 0);
+    const reduceMotion = prefersReducedMotion();
+    const visualTimeMs = this.visualClock.tick(visualNowMs, options.playing ?? false, reduceMotion);
 
     for (const body of snapshot.bodies) {
-      this.drawBody(body, body.id === options.selectedId, bodyScaleMode, sunWorldPosition);
+      this.drawBody(
+        body,
+        body.id === options.selectedId,
+        bodyScaleMode,
+        sunWorldPosition,
+        visualTimeMs,
+        reduceMotion,
+      );
     }
 
     this.drawCollisionEffect();
@@ -323,7 +348,8 @@ export class CanvasRenderer {
       const body = snapshot.bodies[i]!;
       const screen = this.worldToScreen(body.position.x, body.position.y);
       const r = this.computeBodyRadius(body, mode, realSunDisplayPx ?? this.realSunDisplayPx);
-      const effectiveRadius = Math.max(8, r) + 4;
+      const ringProfile = resolveRingProfile(body, r);
+      const effectiveRadius = effectiveBodyHitRadius(r, ringProfile);
       const dx = sx - screen.x;
       const dy = sy - screen.y;
       if (dx * dx + dy * dy <= effectiveRadius * effectiveRadius) return body.id;
@@ -333,13 +359,25 @@ export class CanvasRenderer {
 
   private drawGrid(): void {
     const ctx = this.ctx;
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    ctx.lineWidth = 1;
-
     const topLeft = this.screenToWorld(0, 0);
     const bottomRight = this.screenToWorld(this.camera.width, this.camera.height);
 
     const worldSpan = Math.max(Math.abs(bottomRight.x - topLeft.x), Math.abs(topLeft.y - bottomRight.y));
+    const scale = this.getWorldScale();
+
+    drawStarfield(
+      ctx,
+      this.camera.width,
+      this.camera.height,
+      this.camera.center.x,
+      this.camera.center.y,
+      scale,
+      worldSpan,
+    );
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+
     const step = Math.pow(10, Math.floor(Math.log10(worldSpan / 8)));
 
     const startX = Math.floor(topLeft.x / step) * step;
@@ -394,41 +432,35 @@ export class CanvasRenderer {
     selected: boolean,
     mode: BodyScaleMode = 'relative',
     sunWorldPosition: Vec2 | null = null,
+    visualTimeMs = 0,
+    reduceMotion = false,
   ): void {
     const ctx = this.ctx;
     const s = this.worldToScreen(body.position.x, body.position.y);
     const r = this.computeBodyRadius(body, mode);
-    const isStar =
-      body.mass >= 1e29 ||
-      body.name.toLowerCase().includes('sol') ||
-      body.name.toLowerCase().includes('sun');
+    const star = isStarBody(body);
+    const { ringProfile } = drawBodyVisualPipeline(ctx, body, s.x, s.y, r, {
+      sunWorldPosition,
+      visualTimeMs,
+      reduceMotion,
+    });
 
-    if (isStar && mode !== 'real') {
-      const glowRadius = Math.max(r * 1.5, r + 12);
-      const gradient = ctx.createRadialGradient(s.x, s.y, Math.max(1, r * 0.3), s.x, s.y, glowRadius);
-      gradient.addColorStop(0, 'rgba(251, 191, 36, 0.45)');
-      gradient.addColorStop(0.5, 'rgba(245, 158, 11, 0.18)');
-      gradient.addColorStop(1, 'rgba(245, 158, 11, 0)');
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, glowRadius, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    const selectionRadius = ringProfile
+      ? Math.max(r, r * ringProfile.maxOuterRatio) + 4
+      : Math.max(r, 4) + 4;
 
     if (selected) {
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(s.x, s.y, Math.max(r, 4) + 4, 0, Math.PI * 2);
+      ctx.arc(s.x, s.y, selectionRadius, 0, Math.PI * 2);
       ctx.stroke();
     }
-
-    drawTexturedBodyDisc(ctx, body, s.x, s.y, r, { sunWorldPosition });
 
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.font = '11px system-ui, sans-serif';
     ctx.textAlign = 'center';
-    const labelOffset = Math.max(r, isStar ? 12 : 5) + 6;
+    const labelOffset = (ringProfile ? r * ringProfile.maxOuterRatio : Math.max(r, star ? 12 : 5)) + 6;
     ctx.fillText(body.name, s.x, s.y - labelOffset);
   }
 

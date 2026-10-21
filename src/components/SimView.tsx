@@ -358,6 +358,7 @@ export function SimCanvas() {
         bodyScaleMode: store.bodyScaleMode,
         relativeSunDisplayPx: store.relativeSunDisplayPx,
         realSunDisplayPx: store.realSunDisplayPx,
+        playing: store.playing,
       });
     }
 
