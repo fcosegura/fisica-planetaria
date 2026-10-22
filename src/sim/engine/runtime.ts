@@ -1,12 +1,24 @@
 import type { SimulationDocument } from '../document/simulation-document';
+import type { PhysicsState } from '../state/physics-state';
 import type {
   CelestialBody,
   CollisionMode,
+  ConservationMetrics,
   EngineCompatibility,
   EngineKind,
   SimConfig,
   SimSnapshot,
 } from '../types';
+
+export interface FrameSnapshotOptions {
+  /**
+   * Reuse the last published metrics for a render-only frame. Positions and
+   * velocities remain current. Omit when publishing to UI or reading physics.
+   */
+  cachedDiagnostics?: ConservationMetrics;
+  /** Optional observer of completed physical steps, for bounded trail sampling. */
+  onStep?: (state: PhysicsState) => void;
+}
 
 /**
  * Shared surface of N-body (`SimulationEngine`) and Kepler (`OrbitalEngine`).
@@ -22,7 +34,7 @@ export interface SimulationRuntime {
   setTimeScale(scale: number): void;
   setCollisionMode(mode: CollisionMode): void;
   stepOnce(): SimSnapshot;
-  runFrame(nowMs?: number): SimSnapshot;
+  runFrame(nowMs?: number, options?: FrameSnapshotOptions): SimSnapshot;
 }
 
 export function runRuntimeSteps(engine: SimulationRuntime, n: number): SimSnapshot {

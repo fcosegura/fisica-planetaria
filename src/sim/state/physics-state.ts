@@ -73,12 +73,14 @@ export class PhysicsState {
     return out;
   }
 
+  /** Optional cached metrics are for render-only frames, never physics validation. */
   toSnapshot(
     time: number,
     step: number,
     initialMetrics: ConservationMetrics['initial'],
     timeScale: TimeScaleStatus,
     gravityConstant: number = G,
+    cachedDiagnostics?: ConservationMetrics,
   ): SimSnapshot {
     const bodies: SnapshotBody[] = [];
     for (let i = 0; i < this.count; i++) {
@@ -96,7 +98,7 @@ export class PhysicsState {
       });
     }
 
-    const diagnostics = computeConservationMetrics(this, gravityConstant, initialMetrics);
+    const diagnostics = cachedDiagnostics ?? computeConservationMetrics(this, gravityConstant, initialMetrics);
 
     return {
       time,

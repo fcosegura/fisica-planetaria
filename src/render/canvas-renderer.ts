@@ -19,6 +19,7 @@ import {
   resolveRingProfile,
 } from './body-effects';
 import { VisualClock, prefersReducedMotion } from './visual-clock';
+import type { TrailSamples } from '../sim/worker/protocol';
 
 export type BodyScaleMode = 'relative' | 'real';
 
@@ -37,6 +38,8 @@ export interface RenderOptions {
    */
   playing?: boolean;
   visualNowMs?: number;
+  /** Bounded physical samples; an empty array means no new physical states. */
+  trailSamples?: TrailSamples[];
 }
 
 export class CanvasRenderer {
@@ -52,6 +55,7 @@ export class CanvasRenderer {
   /** px/m at zoom = 1 in real mode; 0 in relative mode. */
   private physicalPxPerMeter = 0;
   private visualClock = new VisualClock();
+  private lastTrailStep = -1;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -147,16 +151,31 @@ export class CanvasRenderer {
 
     const bodiesById = new Map(snapshot.bodies.map((body) => [body.id, body]));
 
+    for (const samples of options.trailSamples ?? []) {
+      if (samples.truncated) this.trails.clear();
+      for (let s = 0; s < samples.count; s++) {
+        samples.ids.forEach((id, i) => {
+          const body = bodiesById.get(id);
+          if (!body?.visual.showTrail) return;
+          const offset = (s * samples.ids.length + i) * 2;
+          this.trails.push(id, { x: samples.positions[offset]!, y: samples.positions[offset + 1]! }, body.visual.trailLength);
+        });
+      }
+    }
+
     for (const body of snapshot.bodies) {
       const parent = body.parentId ? bodiesById.get(body.parentId) : undefined;
       const trailPosition = parent
         ? { x: body.position.x - parent.position.x, y: body.position.y - parent.position.y }
         : body.position;
       if (body.visual.showTrail) {
-        this.trails.push(body.id, trailPosition, body.visual.trailLength);
+        if (options.trailSamples === undefined && snapshot.step !== this.lastTrailStep) {
+          this.trails.push(body.id, trailPosition, body.visual.trailLength);
+        }
         this.drawTrail(body, parent?.position);
       }
     }
+    this.lastTrailStep = snapshot.step;
 
     const sunWorldPosition = this.findSunWorldPosition(snapshot.bodies);
     const visualNowMs = options.visualNowMs ?? (typeof performance !== 'undefined' ? performance.now() : 0);
@@ -185,6 +204,7 @@ export class CanvasRenderer {
 
   clearTrails(): void {
     this.trails.clear();
+    this.lastTrailStep = -1;
     this.collisionEffect = null;
     this.lastCollisionEventKey = null;
   }

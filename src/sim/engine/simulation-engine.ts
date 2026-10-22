@@ -19,7 +19,7 @@ import type {
   TimeScaleStatus,
   CollisionEvent,
 } from '../types';
-import type { SimulationRuntime } from './runtime';
+import type { FrameSnapshotOptions, SimulationRuntime } from './runtime';
 import { FrameClock } from './frame-clock';
 
 function emptyTimeScaleStatus(config: SimConfig): TimeScaleStatus {
@@ -98,12 +98,17 @@ export class SimulationEngine implements SimulationRuntime {
   }
 
   getSnapshot(): SimSnapshot {
+    return this.createSnapshot();
+  }
+
+  private createSnapshot(options?: FrameSnapshotOptions): SimSnapshot {
     const snap = this.state.toSnapshot(
       this.simTime,
       this.stepCount,
       this.initialMetrics,
       this.lastTimeScale,
       this.config.gravityConstant ?? G,
+      options?.cachedDiagnostics,
     );
     return {
       ...snap,
@@ -182,7 +187,7 @@ export class SimulationEngine implements SimulationRuntime {
    * low scales (1×, 10×…) are honoured on average instead of being rounded up
    * to one full step per frame.
    */
-  runFrame(nowMs?: number): SimSnapshot {
+  runFrame(nowMs?: number, options?: FrameSnapshotOptions): SimSnapshot {
     const start = nowMs !== undefined ? performance.now() : 0;
     const budget = this.config.frameBudgetMs;
     const maxSteps = this.config.maxSubstepsPerFrame;
@@ -207,6 +212,7 @@ export class SimulationEngine implements SimulationRuntime {
       executed++;
       this.simTime += dt;
       this.stepCount += 1;
+      options?.onStep?.(this.state);
     }
 
     const isCapped = executed < needed;
@@ -235,7 +241,7 @@ export class SimulationEngine implements SimulationRuntime {
         : null,
     };
 
-    return this.getSnapshot();
+    return this.createSnapshot(options);
   }
 
   private detectMergeEvent(): CollisionEvent | null {

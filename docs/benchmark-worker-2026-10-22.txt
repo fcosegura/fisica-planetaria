@@ -1,0 +1,95 @@
+
+> fisica-planetaria@0.1.0 benchmark
+> vite-node scripts/benchmark-nbody.ts && vite-node scripts/benchmark-engines.ts
+
+Production modules | Node v24.21.0 | win32 x64 | 12th Gen Intel(R) Core(TM) i7-12700KF
+seed=42, warmup=60, samples=120, runs=5, dt=120s; no Canvas/React
+┌─────────┬──────┬────────────────────────┬──────────┬────────┐
+│ (index) │ n    │ phase                  │ medianMs │ p95Ms  │
+├─────────┼──────┼────────────────────────┼──────────┼────────┤
+│ 0       │ 10   │ 'integration'          │ 0.0012   │ 0.0016 │
+│ 1       │ 10   │ 'collision-no-overlap' │ 0.0016   │ 0.002  │
+│ 2       │ 10   │ 'diagnostics'          │ 0.0011   │ 0.002  │
+│ 3       │ 10   │ 'snapshot'             │ 0.0013   │ 0.0018 │
+│ 4       │ 50   │ 'integration'          │ 0.0066   │ 0.0081 │
+│ 5       │ 50   │ 'collision-no-overlap' │ 0.001    │ 0.0011 │
+│ 6       │ 50   │ 'diagnostics'          │ 0.0117   │ 0.0127 │
+│ 7       │ 50   │ 'snapshot'             │ 0.0152   │ 0.0167 │
+│ 8       │ 100  │ 'integration'          │ 0.0218   │ 0.0242 │
+│ 9       │ 100  │ 'collision-no-overlap' │ 0.0012   │ 0.0013 │
+│ 10      │ 100  │ 'diagnostics'          │ 0.0446   │ 0.0495 │
+│ 11      │ 100  │ 'snapshot'             │ 0.0541   │ 0.0608 │
+│ 12      │ 200  │ 'integration'          │ 0.0782   │ 0.0827 │
+│ 13      │ 200  │ 'collision-no-overlap' │ 0.0024   │ 0.003  │
+│ 14      │ 200  │ 'diagnostics'          │ 0.182    │ 0.2044 │
+│ 15      │ 200  │ 'snapshot'             │ 0.1844   │ 0.2077 │
+│ 16      │ 500  │ 'integration'          │ 0.4602   │ 0.4876 │
+│ 17      │ 500  │ 'collision-no-overlap' │ 0.0058   │ 0.0068 │
+│ 18      │ 500  │ 'diagnostics'          │ 1.1027   │ 1.2322 │
+│ 19      │ 500  │ 'snapshot'             │ 1.1262   │ 1.3019 │
+│ 20      │ 1000 │ 'integration'          │ 1.8215   │ 1.9344 │
+│ 21      │ 1000 │ 'collision-no-overlap' │ 0.0115   │ 0.0135 │
+│ 22      │ 1000 │ 'diagnostics'          │ 4.4219   │ 4.9016 │
+│ 23      │ 1000 │ 'snapshot'             │ 4.4565   │ 5.0034 │
+└─────────┴──────┴────────────────────────┴──────────┴────────┘
+[frames] N=100 nbody every-frame: 0.4421 ms / six frames (median)
+[frames] N=100 nbody publish-every-6-frames: 0.202 ms / six frames (median)
+[frames] N=100 orbital every-frame: 0.3162 ms / six frames (median)
+[frames] N=100 orbital publish-every-6-frames: 0.0858 ms / six frames (median)
+[frames] N=500 nbody every-frame: 9.6778 ms / six frames (median)
+[frames] N=500 nbody publish-every-6-frames: 4.0352 ms / six frames (median)
+[frames] N=500 orbital every-frame: 6.9543 ms / six frames (median)
+[frames] N=500 orbital publish-every-6-frames: 1.3175 ms / six frames (median)
+[frames] N=1000 nbody every-frame: 37.823 ms / six frames (median)
+[frames] N=1000 nbody publish-every-6-frames: 15.716 ms / six frames (median)
+[frames] N=1000 orbital every-frame: 27.4138 ms / six frames (median)
+[frames] N=1000 orbital publish-every-6-frames: 9.9494 ms / six frames (median)
+Full runtime frames: identical physics, metrics every frame vs one publication per six frames (10 Hz at 60 Hz).
+┌─────────┬──────┬───────────┬──────────────────────────┬────────────────────┬─────────────────┐
+│ (index) │ n    │ engine    │ mode                     │ medianMsPer6Frames │ p95MsPer6Frames │
+├─────────┼──────┼───────────┼──────────────────────────┼────────────────────┼─────────────────┤
+│ 0       │ 100  │ 'nbody'   │ 'every-frame'            │ 0.4421             │ 0.5055          │
+│ 1       │ 100  │ 'nbody'   │ 'publish-every-6-frames' │ 0.202              │ 0.2412          │
+│ 2       │ 100  │ 'orbital' │ 'every-frame'            │ 0.3162             │ 0.3754          │
+│ 3       │ 100  │ 'orbital' │ 'publish-every-6-frames' │ 0.0858             │ 0.1122          │
+│ 4       │ 500  │ 'nbody'   │ 'every-frame'            │ 9.6778             │ 10.4864         │
+│ 5       │ 500  │ 'nbody'   │ 'publish-every-6-frames' │ 4.0352             │ 4.3683          │
+│ 6       │ 500  │ 'orbital' │ 'every-frame'            │ 6.9543             │ 7.5867          │
+│ 7       │ 500  │ 'orbital' │ 'publish-every-6-frames' │ 1.3175             │ 1.5666          │
+│ 8       │ 1000 │ 'nbody'   │ 'every-frame'            │ 37.823             │ 40.6737         │
+│ 9       │ 1000 │ 'nbody'   │ 'publish-every-6-frames' │ 15.716             │ 16.4357         │
+│ 10      │ 1000 │ 'orbital' │ 'every-frame'            │ 27.4138            │ 29.6287         │
+│ 11      │ 1000 │ 'orbital' │ 'publish-every-6-frames' │ 9.9494             │ 11.8516         │
+└─────────┴──────┴───────────┴──────────────────────────┴────────────────────┴─────────────────┘
+[bench] sun-sedna orbital 100y  0.194 ms  515500 y/s  devKepler=0.00e+0
+[bench] sun-sedna orbital 1000y  0.06 ms  16690000 y/s  devKepler=0.00e+0
+[bench] sun-sedna orbital 10000y  0.023 ms  431000000 y/s  devKepler=0.00e+0
+[bench] kuiper-belt orbital 100y  0.3 ms  333400 y/s  devKepler=5.15e-17
+[bench] kuiper-belt orbital 1000y  0.094 ms  10600000 y/s  devKepler=1.48e-15
+[bench] kuiper-belt orbital 10000y  0.062 ms  161800000 y/s  devKepler=5.82e-14
+[bench] sun-sedna nbody 100y  50.439 ms  1983 y/s  steps=438300  devKepler=1.06e-13
+[bench] sun-sedna nbody 1000y  477.039 ms  2096 y/s  steps=4383000  devKepler=1.85e-12
+[bench] sun-sedna nbody 10000y  6502.572 ms  1538 y/s  steps=43830000  devKepler=5.52e-11
+[bench] kuiper-belt nbody 100y  3569.732 ms  28.01 y/s  steps=438300  devKepler=9.49e-5
+[bench] kuiper-belt nbody 1000y  53589.852 ms  18.66 y/s  steps=4383000  devKepler=3.49e-3
+[bench] kuiper-belt nbody 10000y  323767.382 ms  30.89 y/s  steps=43830000  devKepler=1.69e-1
+
+N-body vs orbital engine (wall clock, main thread; devKepler = |Δr|/a vs ideal two-body Kepler)
+kuiper-belt N-body includes giant-planet perturbations: its devKepler is physical, not integration error.
+
+┌─────────┬───────────────┬───────────┬───────┬────────────┬─────────────┬──────────┬────────────┐
+│ (index) │ scenario      │ engine    │ years │ wallMs     │ yearsPerSec │ steps    │ devKepler  │
+├─────────┼───────────────┼───────────┼───────┼────────────┼─────────────┼──────────┼────────────┤
+│ 0       │ 'sun-sedna'   │ 'orbital' │ 100   │ 0.194      │ 515500      │ 1        │ '0.00e+0'  │
+│ 1       │ 'sun-sedna'   │ 'orbital' │ 1000  │ 0.06       │ 16690000    │ 1        │ '0.00e+0'  │
+│ 2       │ 'sun-sedna'   │ 'orbital' │ 10000 │ 0.023      │ 431000000   │ 1        │ '0.00e+0'  │
+│ 3       │ 'kuiper-belt' │ 'orbital' │ 100   │ 0.3        │ 333400      │ 1        │ '5.15e-17' │
+│ 4       │ 'kuiper-belt' │ 'orbital' │ 1000  │ 0.094      │ 10600000    │ 1        │ '1.48e-15' │
+│ 5       │ 'kuiper-belt' │ 'orbital' │ 10000 │ 0.062      │ 161800000   │ 1        │ '5.82e-14' │
+│ 6       │ 'sun-sedna'   │ 'nbody'   │ 100   │ 50.439     │ 1983        │ 438300   │ '1.06e-13' │
+│ 7       │ 'sun-sedna'   │ 'nbody'   │ 1000  │ 477.039    │ 2096        │ 4383000  │ '1.85e-12' │
+│ 8       │ 'sun-sedna'   │ 'nbody'   │ 10000 │ 6502.572   │ 1538        │ 43830000 │ '5.52e-11' │
+│ 9       │ 'kuiper-belt' │ 'nbody'   │ 100   │ 3569.732   │ 28.01       │ 438300   │ '9.49e-5'  │
+│ 10      │ 'kuiper-belt' │ 'nbody'   │ 1000  │ 53589.852  │ 18.66       │ 4383000  │ '3.49e-3'  │
+│ 11      │ 'kuiper-belt' │ 'nbody'   │ 10000 │ 323767.382 │ 30.89       │ 43830000 │ '1.69e-1'  │
+└─────────┴───────────────┴───────────┴───────┴────────────┴─────────────┴──────────┴────────────┘

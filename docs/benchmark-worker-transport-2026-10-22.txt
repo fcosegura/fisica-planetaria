@@ -1,0 +1,27 @@
+
+> fisica-planetaria@0.1.0 benchmark:worker
+> npm run build && vite-node scripts/benchmark-worker.ts
+
+
+> fisica-planetaria@0.1.0 build
+> tsc -b && vite build
+
+vite v6.4.3 building for production...
+transforming...
+✓ 76 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                              0.42 kB │ gzip:  0.28 kB
+dist/assets/simulation.worker-OOlXVpuc.js   25.42 kB
+dist/assets/index-Bot9Qimh.css               7.95 kB │ gzip:  2.18 kB
+dist/assets/index-DBu-kNaI.js              308.66 kB │ gzip: 96.04 kB
+✓ built in 811ms
+Real Worker bundle | Node v24.21.0 | win32 x64 | 12th Gen Intel(R) Core(TM) i7-12700KF
+114 bodies, dt=120s, requested 1y/s, budget=12ms, runs=3, warmup=5, samples=40/run. No Canvas/React.
+┌─────────┬──────────┬────────────────────┬─────────────────┬────────────────────────┐
+│ (index) │ mode     │ uiBlockingMedianMs │ uiBlockingP95Ms │ completedFrameMedianMs │
+├─────────┼──────────┼────────────────────┼─────────────────┼────────────────────────┤
+│ 0       │ 'main'   │ 12.126             │ 12.155          │ 12.126                 │
+│ 1       │ 'worker' │ 0.077              │ 0.158           │ 12.43                  │
+└─────────┴──────────┴────────────────────┴─────────────────┴────────────────────────┘
+Worker leaves physics work on another thread. A shorter UI call is not a claim of faster physical integration or browser FPS.

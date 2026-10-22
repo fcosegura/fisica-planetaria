@@ -17,7 +17,7 @@ import {
   type Keplerian2D,
 } from '../orbit/kepler-2d';
 import { assessOrbitalCompatibility } from '../orbit/orbital-compatibility';
-import type { SimulationRuntime } from './runtime';
+import type { FrameSnapshotOptions, SimulationRuntime } from './runtime';
 import { FrameClock } from './frame-clock';
 
 function emptyTimeScaleStatus(config: SimConfig): TimeScaleStatus {
@@ -90,12 +90,17 @@ export class OrbitalEngine implements SimulationRuntime {
   }
 
   getSnapshot(): SimSnapshot {
+    return this.createSnapshot();
+  }
+
+  private createSnapshot(options?: FrameSnapshotOptions): SimSnapshot {
     const snap = this.state.toSnapshot(
       this.simTime,
       this.stepCount,
       this.initialMetrics,
       this.lastTimeScale,
       this.config.gravityConstant ?? G,
+      options?.cachedDiagnostics,
     );
     return {
       ...snap,
@@ -172,9 +177,9 @@ export class OrbitalEngine implements SimulationRuntime {
     return this.getSnapshot();
   }
 
-  runFrame(nowMs?: number): SimSnapshot {
+  runFrame(nowMs?: number, options?: FrameSnapshotOptions): SimSnapshot {
     if (!this.compatibility.compatible) {
-      return this.freezeIncompatible();
+      return this.freezeIncompatible(options);
     }
 
     // Kepler evaluation has no step size: advance exactly timeScale × real elapsed.
@@ -183,6 +188,7 @@ export class OrbitalEngine implements SimulationRuntime {
     this.simTime += delta;
     this.stepCount += 1;
     this.evaluate();
+    options?.onStep?.(this.state);
 
     this.lastTimeScale = {
       requestedTimeScale: this.config.simulationTimeScale,
@@ -193,10 +199,10 @@ export class OrbitalEngine implements SimulationRuntime {
       isCapped: false,
       capReason: null,
     };
-    return this.getSnapshot();
+    return this.createSnapshot(options);
   }
 
-  private freezeIncompatible(): SimSnapshot {
+  private freezeIncompatible(options?: FrameSnapshotOptions): SimSnapshot {
     this.lastTimeScale = {
       requestedTimeScale: this.config.simulationTimeScale,
       effectiveTimeScale: 0,
@@ -206,7 +212,7 @@ export class OrbitalEngine implements SimulationRuntime {
       isCapped: true,
       capReason: 'incompatible',
     };
-    return this.getSnapshot();
+    return this.createSnapshot(options);
   }
 
   private rebuild(document: SimulationDocument, initialTime: number): void {

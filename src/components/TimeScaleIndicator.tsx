@@ -5,6 +5,8 @@ import { buildTimeScaleDisplay } from '@/sim/time-scale/format';
 export function TimeScaleIndicator() {
   const snapshot = useSimulationStore((s) => s.snapshot);
   const setTimeScale = useSimulationStore((s) => s.setTimeScale);
+  const executionMode = useSimulationStore((s) => s.executionMode);
+  const renderStats = useSimulationStore((s) => s.renderStats);
 
   if (!snapshot) return null;
 
@@ -24,9 +26,16 @@ export function TimeScaleIndicator() {
       <div className="engine-status">
         <span>
           Motor: {kind === 'orbital' ? 'Orbital' : 'N-body'}
+          {' · '}{executionMode === 'worker' ? 'Worker' : 'Hilo principal'}
         </span>
         {kind === 'orbital' && <span className="engine-badge">Experimental</span>}
       </div>
+      {renderStats && <div className="substeps" aria-label="Fluidez del canvas">
+        Canvas: {renderStats.fps.toFixed(0)} fps · frame p95: {renderStats.p95FrameMs.toFixed(1)} ms
+        <br /><span title="Tiempo síncrono de tick y dibujo del canvas; excluye React y la recepción asíncrona del Worker.">
+          Bucle canvas p95: {renderStats.p95WorkMs.toFixed(1)} ms
+        </span>
+      </div>}
       {kind === 'orbital' && compatibility?.compatible && (
         <p className="engine-warning">
           El motor orbital propaga órbitas de dos cuerpos (Kepler). No incluye perturbaciones

@@ -63,6 +63,9 @@ export function Toolbar() {
   const placementError = useSimulationStore((s) => s.placementError);
   const setPlacementMode = useSimulationStore((s) => s.setPlacementMode);
   const engine = useSimulationStore((s) => s.engine);
+  const executionMode = useSimulationStore((s) => s.executionMode);
+  const setExecutionMode = useSimulationStore((s) => s.setExecutionMode);
+  const workerError = useSimulationStore((s) => s.workerError);
   const snapshot = useSimulationStore((s) => s.snapshot);
 
   const [selectedCategory, setSelectedCategory] = useState<CatalogCategory | 'all'>('all');
@@ -245,11 +248,12 @@ export function Toolbar() {
       <div className="toolbar-row">
         <button
           onClick={() => setPlaying(!playing)}
+          disabled={Boolean(workerError)}
           aria-label={playing ? 'Pausar simulación' : 'Reanudar simulación'}
         >
           {playing ? '⏸ Pausa' : '▶ Play'}
         </button>
-        <button onClick={stepForward} aria-label="Avanzar un paso de simulación">
+        <button onClick={stepForward} disabled={Boolean(workerError)} aria-label="Avanzar un paso de simulación">
           ⏭ Paso
         </button>
         <button onClick={fitCamera} aria-label="Centrar vista en los cuerpos">
@@ -321,6 +325,15 @@ export function Toolbar() {
         </select>
       </div>
 
+      <div className="toolbar-row engine-select" role="group" aria-label="Ejecución de la física">
+        <span>Ejecución:</span>
+        <button className={executionMode === 'worker' ? 'active' : ''}
+          aria-pressed={executionMode === 'worker'} onClick={() => setExecutionMode('worker')}
+          disabled={typeof Worker === 'undefined'}>Worker</button>
+        <button className={executionMode === 'main' ? 'active' : ''}
+          aria-pressed={executionMode === 'main'} onClick={() => setExecutionMode('main')}>Hilo principal</button>
+      </div>
+      {workerError && <p className="engine-error" role="alert">{workerError}</p>}
       <div className="toolbar-row engine-select" role="group" aria-label="Motor de simulación">
         <span className="engine-select-label">Motor:</span>
         <button

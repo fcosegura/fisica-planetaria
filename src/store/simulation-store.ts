@@ -9,9 +9,50 @@ import { DEFAULT_RELATIVE_SUN_DISPLAY_PX, DEFAULT_REAL_SUN_DISPLAY_PX, MAX_REAL_
 import { makeBodyAtPosition } from '@/sim/orbit/compute-orbit';
 import { applySatelliteRecoil, makeVisual, nextCatalogBodyId } from '@/sim/catalog/solar-system';
 import { resolvePhysicsDt } from '@/sim/config/physics-dt';
+import { WorkerSimulationSession, cancelled } from '@/runtime/worker-session';
+import { PhysicsTrailSampler } from '@/sim/worker/trail-sampler';
+import type { SimulationDocument } from '@/sim/types';
+import { FramePerformance } from '@/render/frame-performance';
+
+type BrowserSession = SimulationRuntime | WorkerSimulationSession;
+export type ExecutionMode = 'main' | 'worker';
+const defaultExecutionMode: ExecutionMode = typeof Worker !== 'undefined' ? 'worker' : 'main';
+
+function makeSession(document: SimulationDocument, initialTime = 0, mode = defaultExecutionMode): BrowserSession {
+  if (mode === 'main') return createSimulationRuntime({ document, initialTime });
+  const session = new WorkerSimulationSession(document, initialTime);
+  session.onFailure = (message) => {
+    if (useSimulationStore.getState().engine === session) {
+      useSimulationStore.setState({ workerError: message, playing: false, snapshot: session.getPublishedSnapshot() });
+    }
+  };
+  const startupError = session.getError();
+  if (startupError) queueMicrotask(() => session.onFailure?.(startupError));
+  return session;
+}
+
+function disposeSession(engine: BrowserSession | null): void {
+  if (engine instanceof WorkerSimulationSession) engine.dispose();
+}
+
+function acknowledge(engine: BrowserSession, result: Promise<SimSnapshot>): void {
+  void result.then((snapshot) => {
+    if (useSimulationStore.getState().engine === engine && !useSimulationStore.getState().playing) {
+      useSimulationStore.setState({ snapshot });
+    }
+  }).catch((error: unknown) => {
+    if (!cancelled(error) && useSimulationStore.getState().engine === engine) {
+      useSimulationStore.setState({ workerError: error instanceof Error ? error.message : String(error), playing: false });
+    }
+  });
+}
 
 export interface SimulationStore {
-  engine: SimulationRuntime | null;
+  engine: BrowserSession | null;
+  executionMode: ExecutionMode;
+  workerError: string | null;
+  renderStats: { fps: number; p95FrameMs: number; p95WorkMs: number } | null;
+  setExecutionMode: (mode: ExecutionMode) => void;
   snapshot: SimSnapshot | null;
   playing: boolean;
   selectedId: string | null;
@@ -55,11 +96,18 @@ export interface SimulationStore {
   zoomBy: (factor: number) => void;
 }
 
-function initEngine(scenario: ScenarioPreset = solarSystem): SimulationRuntime {
-  return createSimulationRuntime({ document: scenarioToDocument(scenario) });
+function initEngine(scenario: ScenarioPreset = solarSystem): BrowserSession {
+  return makeSession(scenarioToDocument(scenario));
 }
 
-const initialEngine = initEngine();
+let initialWorkerError: string | null = null;
+const initialEngine = (() => {
+  try { return initEngine(); }
+  catch {
+    initialWorkerError = 'No se pudo iniciar el Worker. Selecciona Hilo principal para continuar.';
+    return createSimulationRuntime({ document: scenarioToDocument(solarSystem) });
+  }
+})();
 
 /**
  * While playing, React panels receive a new snapshot at most this often. The
@@ -68,10 +116,11 @@ const initialEngine = initEngine();
  */
 export const UI_SNAPSHOT_INTERVAL_MS = 100;
 let lastSnapshotPublishMs = -Infinity;
+const framePerformance = new FramePerformance();
 /** Snapshot of the latest frame or store update (fresher than the throttled `snapshot`). */
 let liveSnapshot: SimSnapshot | null = null;
 
-/** Freshest simulation state for camera framing and hit-testing. */
+/** Latest rendered bodies for camera/hit-testing; interpolation and cached diagnostics are visual only. */
 export function latestSnapshot(): SimSnapshot | null {
   return liveSnapshot;
 }
@@ -82,6 +131,9 @@ function getSafePhysicsDt(bodies: CelestialBody[], currentDt: number): number {
 
 export const useSimulationStore = create<SimulationStore>((set, get) => ({
   engine: initialEngine,
+  executionMode: initialEngine instanceof WorkerSimulationSession ? 'worker' : 'main',
+  workerError: initialWorkerError,
+  renderStats: null,
   snapshot: initialEngine.getSnapshot(),
   playing: false,
   selectedId: null,
@@ -95,16 +147,33 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   currentScenarioId: solarSystem.id,
   renderer: null,
 
+  setExecutionMode: (mode) => {
+    const { engine, renderer } = get();
+    if (!engine) return;
+    try {
+      const document = createDocument('custom', engine.getBodies(), engine.getConfig());
+      const next = makeSession(document, engine.getSnapshot().time, mode);
+      disposeSession(engine);
+      renderer?.clearTrails();
+      framePerformance.reset();
+      set({ engine: next, executionMode: mode, snapshot: next.getSnapshot(), playing: false, workerError: null, renderStats: null });
+    } catch (error) {
+      set({ workerError: error instanceof Error ? error.message : String(error), playing: false });
+    }
+  },
+
   loadScenario: (scenario) => {
     const kind = get().engine?.getEngineKind() ?? 'nbody';
     const base = scenarioToDocument(scenario);
-    const engine = createSimulationRuntime({
-      document: { ...base, config: { ...base.config, engineKind: kind } },
-    });
+    const engine = makeSession({ ...base, config: { ...base.config, engineKind: kind } }, 0, get().executionMode);
+    disposeSession(get().engine);
     const renderer = get().renderer;
     renderer?.clearTrails();
+    framePerformance.reset();
     set({
       engine,
+      workerError: null,
+      renderStats: null,
       snapshot: engine.getSnapshot(),
       playing: false,
       selectedId: null,
@@ -120,18 +189,21 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     // Publish the live state on pause: the store copy may lag by one UI interval.
     const { engine } = get();
     set(playing ? { playing } : { playing, snapshot: engine?.getSnapshot() ?? null });
+    if (!playing && engine instanceof WorkerSimulationSession) acknowledge(engine, engine.pause());
   },
 
   stepForward: () => {
     const { engine } = get();
     if (!engine) return;
-    set({ snapshot: engine.stepOnce() });
+    const result = engine.stepOnce();
+    if (result instanceof Promise) acknowledge(engine, result);
+    else set({ snapshot: result });
   },
 
   setTimeScale: (scale) => {
     const { engine } = get();
     engine?.setTimeScale(scale);
-    set({ snapshot: engine?.getSnapshot() ?? null });
+    set({ snapshot: engine instanceof WorkerSimulationSession ? engine.getPublishedSnapshot() : engine?.getSnapshot() ?? null });
   },
 
   setEngineKind: (kind) => {
@@ -141,9 +213,10 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     const bodies = engine.getBodies();
     const time = engine.getSnapshot().time;
     const doc = createDocument('custom', bodies, config);
-    const next = createSimulationRuntime({ document: doc, initialTime: time });
+    const next = makeSession(doc, time, get().executionMode);
+    disposeSession(engine);
     renderer?.clearTrails();
-    set({ engine: next, snapshot: next.getSnapshot(), playing: false });
+    set({ engine: next, snapshot: next.getSnapshot(), playing: false, workerError: null });
   },
 
   setSelectedId: (id) => {
@@ -198,6 +271,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     const safeDt = getSafePhysicsDt(bodies, config.physicsDt);
     const doc = createDocument('custom', bodies, { ...config, physicsDt: safeDt });
     engine.reset(doc);
+    get().renderer?.clearTrails();
     set({
       snapshot: engine.getSnapshot(),
       selectedId: body.id,
@@ -244,6 +318,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     const safeDt = getSafePhysicsDt(bodies, config.physicsDt);
     const doc = createDocument('custom', bodies, { ...config, physicsDt: safeDt });
     engine.reset(doc);
+    get().renderer?.clearTrails();
     set({ snapshot: engine.getSnapshot() });
   },
 
@@ -259,6 +334,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     const safeDt = getSafePhysicsDt(bodies, config.physicsDt);
     const doc = createDocument('custom', bodies, { ...config, physicsDt: safeDt });
     engine.reset(doc);
+    get().renderer?.clearTrails();
     set({ snapshot: engine.getSnapshot() });
   },
 
@@ -270,6 +346,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     const safeDt = getSafePhysicsDt(bodies, config.physicsDt);
     const doc = createDocument('custom', bodies, { ...config, physicsDt: safeDt });
     engine.reset(doc);
+    get().renderer?.clearTrails();
     set({
       snapshot: engine.getSnapshot(),
       selectedId: selectedId === id ? null : selectedId,
@@ -286,6 +363,9 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   attachRenderer: (renderer) => set({ renderer }),
 
   tick: (nowMs) => {
+    const workStart = performance.now();
+    const renderStats = framePerformance.record(nowMs);
+    if (renderStats) set({ renderStats });
     const {
       engine,
       playing,
@@ -300,9 +380,20 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     } = get();
     if (!engine || !renderer) return;
 
-    const next = playing ? engine.runFrame(nowMs) : snapshot ?? engine.getSnapshot();
-    liveSnapshot = next;
-    renderer.render(next, {
+    const publishSnapshot = !playing || nowMs - lastSnapshotPublishMs >= UI_SNAPSHOT_INTERVAL_MS;
+    const worker = engine instanceof WorkerSimulationSession ? engine : null;
+    const sampler = !worker && playing ? new PhysicsTrailSampler() : null;
+    const next = playing
+      ? engine.runFrame(nowMs, {
+        cachedDiagnostics: publishSnapshot ? undefined : snapshot?.diagnostics,
+        onStep: sampler?.observe,
+      })
+      : snapshot ?? engine.getSnapshot();
+    const samples = sampler?.finish(next, next.time - (liveSnapshot?.time ?? next.time));
+    const rendered = playing && worker ? worker.getRenderSnapshot(nowMs) : next;
+    liveSnapshot = rendered;
+    const trailSamples = worker ? worker.drainTrails() : samples ? [samples] : [];
+    renderer.render(rendered, {
       selectedId,
       followId,
       showDebug,
@@ -311,10 +402,18 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       realSunDisplayPx,
       playing,
       visualNowMs: nowMs,
+      trailSamples: !playing && trailSamples.length === 0 ? undefined : trailSamples,
     });
-    if (playing && nowMs - lastSnapshotPublishMs < UI_SNAPSHOT_INTERVAL_MS) return;
+    if (!publishSnapshot) {
+      framePerformance.completeFrame(performance.now() - workStart);
+      return;
+    }
     lastSnapshotPublishMs = nowMs;
-    set({ snapshot: next });
+    set({ snapshot: playing && worker ? worker.getPublishedSnapshot() : next });
+    // The store subscription tracks explicit snapshot updates, but this frame
+    // drew an interpolated Worker state that hit-testing must continue to use.
+    liveSnapshot = rendered;
+    framePerformance.completeFrame(performance.now() - workStart);
   },
 
   fitCamera: () => {

@@ -71,7 +71,8 @@ npm install              # instalar dependencias
 npm run dev              # servidor local
 npm test                 # ejecutar todos los tests
 npm run build            # comprobar tipos y build de producción
-npm run benchmark        # O(N²) + comparativa N-body vs Orbital (Sedna/Kuiper)
+npm run benchmark        # módulos reales por fase + frames + N-body vs Orbital (Sedna/Kuiper)
+npm run benchmark:worker # build + bundle Worker real en node:worker_threads
 ```
 
 Una modificación se considera lista cuando `npm test` y `npm run build` pasan.
@@ -87,6 +88,11 @@ SimulationDocument → createSimulationRuntime(engineKind)
                    → PhysicsState/Snapshot → CanvasRenderer
 ```
 
+En navegador, `src/runtime/worker-session.ts` envuelve esos motores en una sesión
+asíncrona: `src/sim/worker/simulation.worker.ts` ejecuta la física y Canvas/React
+permanecen en el hilo principal. «Ejecución: Worker / Hilo principal» selecciona
+el transporte; no cambia `engineKind`. Worker es el default si está disponible.
+
 - `src/sim/` contiene la física y no debe depender de React, del DOM ni del
   estado de Zustand.
 - `src/sim/solver/` calcula aceleraciones; `src/sim/integrator/` actualiza
@@ -98,8 +104,20 @@ SimulationDocument → createSimulationRuntime(engineKind)
   de dos cuerpos respecto a un primario dominante. No sustituye al N-body ni
   se activa por heurística. El usuario lo elige en la UI.
 - La interfaz `SimulationRuntime` (`getEngineKind`, `runFrame`, `stepOnce`, …)
-  es el único contrato compartido. Añadir motores futuros (Barnes–Hut, Worker)
+  es el único contrato compartido por motores físicos. Añadir motores futuros
   implementando esa interfaz, sin reescribir los dos actuales.
+- Los motores dentro del Worker siguen implementando `SimulationRuntime` síncrona.
+  `WorkerSimulationSession` es un controlador de UI separado: getters del último
+  estado confirmado, `stepOnce()` y `pause()` con Promise/acuse. No tratarlo como
+  un runtime síncrono ni usar getters del cliente para validación numérica.
+  El protocolo lleva id/generación; permite un frame pendiente, descarta respuestas
+  anteriores a reset, termina Workers reemplazados y pausa con aviso si falla o
+  no responde en 5 s. El usuario puede recuperar el último estado con Hilo principal.
+- Posiciones/velocidades viajan en Float64Array transferible; metadatos solo al
+  inicializar o fusionar. Los snapshots publicados en React tienen diagnósticos
+  frescos del mismo estado; el canvas puede recibir estados posteriores con
+  métricas reutilizadas. Interpolación solo visual entre estados confirmados,
+  sin extrapolar ni trazar grandes cuerdas que crucen un primario.
 - `src/sim/state/` contiene el estado físico de ejecución; los metadatos
   editables del documento y los datos visuales deben permanecer separados.
 - `src/render/` y `src/components/` se ocupan de cámara, canvas e interacción,
@@ -112,7 +130,28 @@ SimulationDocument → createSimulationRuntime(engineKind)
   es exacto; rotar el disco texturizado giraría los polos). Es solo visual: no altera masa, radio físico ni integración.
 - Mientras se reproduce, el store publica `snapshot` a React como máximo cada
   `UI_SNAPSHOT_INTERVAL_MS` (100 ms); el canvas se dibuja cada frame. Para
-  hit-testing o encuadre de cámara usar `latestSnapshot()`, no `store.snapshot`.
+  hit-testing o encuadre de cámara usar `latestSnapshot()`, no `store.snapshot`:
+  corresponde al estado dibujado (puede estar interpolado), nunca usarlo como
+  entrada física. El estado físico confirmado se obtiene de la sesión/motor.
+- `runFrame(nowMs?, { cachedDiagnostics })` permite reutilizar las métricas del
+  último snapshot publicado en frames exclusivos del canvas. El store omite
+  esta opción al publicar (100 ms): posiciones/velocidades siempre son actuales,
+  y las métricas publicadas corresponden a ese mismo estado. `getSnapshot()`,
+  `stepOnce()`, pausa y edición calculan métricas frescas. No usar los diagnósticos
+  de `latestSnapshot()` para validación física: pedir `engine.getSnapshot()`.
+- `scripts/benchmark-nbody.ts` importa los módulos de producción: mide integración,
+  colisiones sin solapes, diagnósticos, snapshots y lotes de seis frames con la
+  misma física y distinta frecuencia de diagnósticos. Reporta warm-up, mediana,
+  p95 y entorno. Es headless; no mide Canvas/React ni acredita FPS de navegador.
+- `npm run benchmark:worker` compila y ejecuta el bundle real del Worker en
+  `node:worker_threads` con 114 cuerpos; separa bloqueo del hilo llamante y
+  tiempo hasta completar el frame. No convertir su ahorro de bloqueo en FPS.
+- Estelas N-body: observador opcional `FrameSnapshotOptions.onStep` sobre pasos
+  físicos completados. `PhysicsTrailSampler` recoge cada 8 pasos, máximo 128
+  muestras por cuerpo/lote, relativas al padre para lunas. Truncamientos/fusiones
+  marcan discontinuidad y limpian el historial visual para no unir saltos falsos.
+  El canvas no añade duplicados pausado o esperando al Worker. El contador de FPS
+  y p95 en la UI mide cadencia de render, separada de años/s de física.
 - `DirectNBodySolver` evalúa cada par una sola vez (3.ª ley de Newton).
   `MergeCollisionPolicy` hace primero un sweep-and-prune exacto en x y solo
   ejecuta el bucle O(N²) de fusión si hay algún solape. Compara distancias al
@@ -203,10 +242,12 @@ anterior.
 
 ## Alcance de la v1
 
-No introducir WebGPU, WASM, Workers ni una implementación completa de
+No introducir WebGPU, WASM ni una implementación completa de
 Barnes–Hut como parte de una mejora ordinaria. Esas piezas son fases futuras y
 requieren una decisión explícita, benchmarks y una estrategia de validación
-equivalente al solver directo. El motor orbital v1 tampoco incluye
+equivalente al solver directo. La sesión Worker de fase 2 fue autorizada por el
+usuario el 22-10-2026: conserva solver, integrador, dt y motor seleccionados.
+El motor orbital v1 tampoco incluye
 perturbaciones planetarias, efemérides JPL, híbridos N-body/Kepler, ni
 órbitas parabólicas/hiperbólicas.
 

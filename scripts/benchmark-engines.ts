@@ -1,6 +1,6 @@
 /**
  * Comparative wall-clock report: leapfrog N-body vs Kepler orbital engine.
- * Run via `npm run benchmark` (after the O(N²) microbench). Not part of `npm test`.
+ * Run via `npm run benchmark` (after production phase/frame benchmarks). Not part of `npm test`.
  *
  * No performance target: the table is the result. Orbital evaluates one epoch;
  * N-body takes one Leapfrog step per physicsDt.

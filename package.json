@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "benchmark": "node scripts/benchmark-nbody.mjs && vite-node scripts/benchmark-engines.ts"
+    "benchmark": "vite-node scripts/benchmark-nbody.ts && vite-node scripts/benchmark-engines.ts",
+    "benchmark:worker": "npm run build && vite-node scripts/benchmark-worker.ts"
   },
   "dependencies": {
     "react": "^19.1.0",

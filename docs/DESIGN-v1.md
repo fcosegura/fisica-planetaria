@@ -238,7 +238,7 @@
 **Advertencias:**
 
 - Estos números son **Node.js**, no browser. El navegador puede ser 1.5–3× más lento por GC y falta de optimización JIT equivalente. Tratar como **cota optimista**.
-- Repetir en CI con script versionado (`scripts/benchmark-nbody.mjs`) antes de fase 2.
+- Repetir en CI con el benchmark actual de módulos de producción (`scripts/benchmark-nbody.ts`) antes de fase 2.
 - No extrapolar a 10,000 cuerpos: fuera del alcance del laboratorio.
 
 **Conclusión (conservadora):**
@@ -806,6 +806,23 @@ Si en fase 2 se añade softening avanzado, los tests de validación siguen ejecu
 
 ---
 
+### H.5 Frecuencia de diagnósticos durante reproducción
+
+El estado físico y el canvas se actualizan cada frame. El store calcula los
+diagnósticos al publicar a React (`UI_SNAPSHOT_INTERVAL_MS = 100 ms`), evitando
+repetir el cálculo exacto O(N²) de energía potencial en frames que solo dibujan.
+Para ello `SimulationRuntime.runFrame` acepta una opción aditiva
+`{ cachedDiagnostics }`: solo se usa en snapshots de render, nunca al publicar.
+`getSnapshot()` y `stepOnce()` siguen calculando métricas frescas; la pausa y las
+ediciones también. Esta separación no cambia las fuerzas ni la integración.
+
+`scripts/benchmark-nbody.ts` sustituye el microbenchmark aislado antiguo por los
+módulos de producción (solver, integrador, colisiones, diagnósticos y snapshots).
+Compara lotes completos de seis frames con la misma física y distintas frecuencias
+de diagnósticos; incluye el coste del frame de publicación. Warm-up y múltiples
+runs con mediana/p95; entorno explícito. No mide Canvas/React ni FPS de navegador.
+Las cifras históricas de la sección C son antecedentes, no medidas del código actual.
+
 ## I. Roadmap
 
 ### Fase 0 — Fundamentos (semana 1)
@@ -829,7 +846,7 @@ Si en fase 2 se añade softening avanzado, los tests de validación siguen ejecu
 - [ ] Todos los escenarios de validación (sección H) como tests
 
 ### Fase 2 — Escala y robustez (semana 4+)
-- [ ] `SimulationWorker`: física en Worker, mismo protocolo de mensajes
+- [x] `SimulationWorker`: sesión asíncrona, motores síncronos sin sustituir física (22-10-2026)
 - [ ] `BarnesHutSolver` (CPU, quadtree 2D) — interface idéntica
 - [ ] Undo/redo en SimulationDocument
 - [ ] Export/import JSON de escenarios
@@ -1011,5 +1028,36 @@ Se añade un segundo motor, `OrbitalEngine`, seleccionable explícitamente:
 Validación: `src/sim/validation/orbital-engine.test.ts`. Benchmark comparativo: `npm run benchmark`.
 
 ---
+
+## P. Ejecución Worker autorizada (22-10-2026)
+
+La autorización del usuario amplía el alcance de v1 para implementar Worker de
+fase 2. Las referencias anteriores a «sin Worker» describen la entrega inicial.
+No se introducen Barnes–Hut, WASM, WebGPU ni cambios del paso físico.
+
+`src/runtime/worker-session.ts` es una sesión de UI asíncrona, distinta de
+`SimulationRuntime`: sus getters leen el último estado confirmado y pausa/paso
+manual devuelven Promise. Dentro de `src/sim/worker/simulation.worker.ts` se
+instancian los mismos motores mediante `createSimulationRuntime`. Los cambios de
+transporte se eligen con Worker/Hilo principal, independientemente de N-body/Orbital.
+
+Protocolo tipado de peticiones id/generación, un frame pendiente y barrera de
+pausa. Reset/edición invalida respuestas antiguas; reemplazar una sesión termina
+el Worker. Errores o ausencia de respuesta durante 5 s detienen reproducción con
+aviso y recuperación manual en el hilo principal. Float64Array transferibles para
+cinemática y estelas; metadatos enviados al iniciar o cambiar cuerpos por fusión.
+Los estados publicados tienen métricas frescas; el canvas puede usar estados
+posteriores y únicamente interpola desplazamientos cortos entre confirmaciones.
+Nunca se reinyecta una posición visual en el solver.
+
+Las estelas N-body muestrean estados integrados cada 8 pasos, con máximo de 128
+muestras por cuerpo/lote y coordenadas relativas al padre para lunas. Si se
+trunca historia se corta el dibujo anterior, evitando cuerdas falsas a velocidades
+altas. FPS/p95 miden cadencia del canvas; no equivalen a throughput de física.
+
+Validación: paridad numérica y de conservación con la ejecución directa para
+ambos motores y los 114 cuerpos, colisiones, orden pausa/paso, reset y respuestas
+obsoletas, timeout y transferencia Float64. La prueba en navegador debe comparar
+los dos transportes con el mismo escenario y distinguir fluidez de años/s.
 
 *Fin del documento de diseño v1.*
